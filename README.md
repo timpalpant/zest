@@ -160,6 +160,7 @@ and devicetree wiring belong to the application and board.
 Install Doxygen and run:
 
 ```sh
+mkdir -p build/docs
 doxygen Doxyfile
 ```
 
