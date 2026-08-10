@@ -1,0 +1,40 @@
+menuconfig ZEST
+	bool "Zest C++23 services"
+	depends on CPP && STD_CPP23 && REQUIRES_FULL_LIBCPP
+	help
+	  Allocation-conscious, idiomatic C++23 wrappers for common Zephyr
+	  services.
+
+if ZEST
+
+config ZEST_BATTERY_MONITOR
+	bool "BatteryMonitor"
+	depends on ADC
+	help
+	  ADC-backed single-cell battery voltage and state-of-charge monitor.
+
+config ZEST_HTTP_CLIENT
+	bool "HttpClient"
+	depends on NETWORKING && NET_SOCKETS && NET_TCP
+	depends on DNS_RESOLVER && HTTP_CLIENT && NET_SOCKETS_SOCKOPT_TLS
+	help
+	  Synchronous HTTP/1.1 and HTTPS client with caller-owned response storage.
+
+config ZEST_WIFI_MANAGER
+	bool "WifiManager"
+	depends on NETWORKING && NET_IPV4 && WIFI
+	select NET_MGMT_EVENT_INFO
+	help
+	  Synchronous Wi-Fi station lifecycle wrapper that waits for DHCP.
+
+config ZEST_BLUETOOTH_MANAGER
+	bool "BluetoothManager"
+	select BT
+	select BT_CENTRAL
+	select BT_DEVICE_NAME_DYNAMIC
+	help
+	  BLE manager with Zephyr Bluetooth, central-role support, and dynamic
+	  device naming. Bluetooth controllers can reserve substantial RAM, even
+	  before enable() is called.
+
+endif
