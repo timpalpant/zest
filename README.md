@@ -5,8 +5,9 @@ Zest is an allocation-conscious C++23 service library for
 in small, synchronous APIs built around `std::expected`, `std::span`, and
 `std::chrono`.
 
-- `zest::BatteryMonitor` samples a voltage-divider-backed battery and estimates
-  state of charge using an application-supplied discharge curve.
+- `zest::BatteryMonitor` samples a voltage-divider-backed battery;
+  `zest::estimate_charge_percent()` independently maps voltage through an
+  application-supplied discharge curve.
 - `zest::WifiManager` connects, retries transient association failures, waits
   for DHCP, reports status, and controls power saving.
 - `zest::HttpClient` provides session-style HTTP/1.1 defaults, HTTPS/SNI, and
@@ -78,6 +79,7 @@ The corresponding Zephyr facilities remain application policy:
 
 ```cpp
 #include <array>
+#include <zest/battery_curve.hpp>
 #include <zest/battery_monitor.hpp>
 
 constexpr std::array discharge_curve{
@@ -90,17 +92,18 @@ zest::BatteryMonitor battery{
     battery_adc,
     DT_PROP(DT_NODELABEL(vbatt), output_ohms),
     DT_PROP(DT_NODELABEL(vbatt), full_ohms),
-    discharge_curve,
 };
 
 if (auto initialized = battery.init(); initialized) {
-    auto reading = battery.read();
+    if (auto millivolts = battery.read_millivolts()) {
+        auto percent = zest::estimate_charge_percent(*millivolts, discharge_curve);
+    }
 }
 ```
 
 Curve points must be ordered from highest to lowest voltage with
-non-increasing percentages. The caller owns the curve storage, which must
-outlive the monitor.
+non-increasing percentages. The helper borrows the curve only while performing
+the conversion; `BatteryMonitor` does not retain it.
 
 ### Wi-Fi
 
