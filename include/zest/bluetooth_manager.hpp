@@ -40,17 +40,18 @@ class BluetoothManager
 		AddressType type{AddressType::public_};
 	};
 
-	BluetoothManager();
-	~BluetoothManager();
+	BluetoothManager() noexcept;
+	~BluetoothManager() noexcept;
 
 	BluetoothManager(const BluetoothManager &) = delete;
 	BluetoothManager &operator=(const BluetoothManager &) = delete;
 
-	[[nodiscard]] std::expected<void, int> enable(std::string_view device_name = {});
-	[[nodiscard]] std::expected<void, int> disable();
+	[[nodiscard]] std::expected<void, int> enable(std::string_view device_name = {}) noexcept;
+	[[nodiscard]] std::expected<void, int> disable() noexcept;
 	[[nodiscard]] std::expected<void, int>
-	connect(const Peer &peer, std::chrono::milliseconds timeout = std::chrono::seconds{30});
-	[[nodiscard]] std::expected<void, int> disconnect();
+	connect(const Peer &peer,
+		std::chrono::milliseconds timeout = std::chrono::seconds{30}) noexcept;
+	[[nodiscard]] std::expected<void, int> disconnect() noexcept;
 
 	[[nodiscard]] State state() const noexcept;
 	[[nodiscard]] bool connected() const noexcept
@@ -60,8 +61,8 @@ class BluetoothManager
 
       private:
 #if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-	static void connected_callback(struct bt_conn *connection, std::uint8_t error);
-	static void disconnected_callback(struct bt_conn *connection, std::uint8_t reason);
+	static void connected_callback(struct bt_conn *connection, std::uint8_t error) noexcept;
+	static void disconnected_callback(struct bt_conn *connection, std::uint8_t reason) noexcept;
 	struct bt_conn *connection_{};
 	struct bt_conn_cb callbacks_{};
 #endif

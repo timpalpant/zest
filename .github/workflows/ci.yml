@@ -47,7 +47,7 @@ jobs:
             fi
             west build -d "$GITHUB_WORKSPACE/build/$component" \
               -b native_sim/native/64 "$GITHUB_WORKSPACE/tests/smoke" -- \
-              -DZEPHYR_EXTRA_MODULES="$GITHUB_WORKSPACE" $extra_conf
+              -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE" $extra_conf
           done
 
   docs:

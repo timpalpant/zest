@@ -88,30 +88,30 @@ class HttpClient
 	explicit HttpClient(Options options) noexcept;
 
 	[[nodiscard]] std::expected<HttpResponse, HttpError>
-	request(const HttpRequest &request, std::span<std::byte> response_buffer);
+	request(const HttpRequest &request, std::span<std::byte> response_buffer) noexcept;
 
 	[[nodiscard]] std::expected<HttpResponse, HttpError>
 	get(std::string_view url, std::span<std::byte> response_buffer,
-	    std::span<const HttpHeader> headers = {});
+	    std::span<const HttpHeader> headers = {}) noexcept;
 
 	[[nodiscard]] std::expected<HttpResponse, HttpError>
 	post(std::string_view url, std::span<const std::byte> body,
 	     std::span<std::byte> response_buffer,
 	     std::string_view content_type = "application/octet-stream",
-	     std::span<const HttpHeader> headers = {});
+	     std::span<const HttpHeader> headers = {}) noexcept;
 	[[nodiscard]] std::expected<HttpResponse, HttpError>
 	put(std::string_view url, std::span<const std::byte> body,
 	    std::span<std::byte> response_buffer,
 	    std::string_view content_type = "application/octet-stream",
-	    std::span<const HttpHeader> headers = {});
+	    std::span<const HttpHeader> headers = {}) noexcept;
 	[[nodiscard]] std::expected<HttpResponse, HttpError>
 	patch(std::string_view url, std::span<const std::byte> body,
 	      std::span<std::byte> response_buffer,
 	      std::string_view content_type = "application/octet-stream",
-	      std::span<const HttpHeader> headers = {});
+	      std::span<const HttpHeader> headers = {}) noexcept;
 	[[nodiscard]] std::expected<HttpResponse, HttpError>
 	delete_request(std::string_view url, std::span<std::byte> response_buffer,
-		       std::span<const HttpHeader> headers = {});
+		       std::span<const HttpHeader> headers = {}) noexcept;
 
 	void set_timeout(std::chrono::milliseconds timeout) noexcept;
 	void set_user_agent(std::string_view user_agent) noexcept;

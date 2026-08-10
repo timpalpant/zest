@@ -15,7 +15,7 @@ namespace zest
 
 BluetoothManager *BluetoothManager::instance_ = nullptr;
 
-BluetoothManager::BluetoothManager()
+BluetoothManager::BluetoothManager() noexcept
 {
 	k_sem_init(&state_changed_, 0, 1);
 	k_mutex_init(&mutex_);
@@ -31,7 +31,7 @@ BluetoothManager::BluetoothManager()
 #endif
 }
 
-BluetoothManager::~BluetoothManager()
+BluetoothManager::~BluetoothManager() noexcept
 {
 #if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	if (instance_ == this) {
@@ -43,7 +43,7 @@ BluetoothManager::~BluetoothManager()
 	}
 }
 
-std::expected<void, int> BluetoothManager::enable(std::string_view device_name)
+std::expected<void, int> BluetoothManager::enable(std::string_view device_name) noexcept
 {
 #if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	ARG_UNUSED(device_name);
@@ -81,7 +81,7 @@ std::expected<void, int> BluetoothManager::enable(std::string_view device_name)
 #endif
 }
 
-std::expected<void, int> BluetoothManager::disable()
+std::expected<void, int> BluetoothManager::disable() noexcept
 {
 #if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	return std::unexpected(-ENOTSUP);
@@ -111,7 +111,7 @@ std::expected<void, int> BluetoothManager::disable()
 }
 
 std::expected<void, int> BluetoothManager::connect(const Peer &peer,
-						   std::chrono::milliseconds timeout)
+						   std::chrono::milliseconds timeout) noexcept
 {
 #if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	ARG_UNUSED(peer);
@@ -172,7 +172,7 @@ std::expected<void, int> BluetoothManager::connect(const Peer &peer,
 #endif
 }
 
-std::expected<void, int> BluetoothManager::disconnect()
+std::expected<void, int> BluetoothManager::disconnect() noexcept
 {
 #if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	return std::unexpected(-ENOTSUP);
@@ -204,7 +204,7 @@ BluetoothManager::State BluetoothManager::state() const noexcept
 }
 
 #if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-void BluetoothManager::connected_callback(struct bt_conn *connection, std::uint8_t error)
+void BluetoothManager::connected_callback(struct bt_conn *connection, std::uint8_t error) noexcept
 {
 	if (instance_ == nullptr || connection != instance_->connection_) {
 		return;
@@ -220,7 +220,8 @@ void BluetoothManager::connected_callback(struct bt_conn *connection, std::uint8
 	k_sem_give(&instance_->state_changed_);
 }
 
-void BluetoothManager::disconnected_callback(struct bt_conn *connection, std::uint8_t reason)
+void BluetoothManager::disconnected_callback(struct bt_conn *connection,
+					     std::uint8_t reason) noexcept
 {
 	ARG_UNUSED(reason);
 	if (instance_ == nullptr || connection != instance_->connection_) {

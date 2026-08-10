@@ -20,7 +20,7 @@ constexpr auto maximum_retry_delay = std::chrono::milliseconds{5000};
 
 WifiManager *WifiManager::instance_ = nullptr;
 
-WifiManager::WifiManager() : iface_{net_if_get_default()}
+WifiManager::WifiManager() noexcept : iface_{net_if_get_default()}
 {
 	k_sem_init(&state_changed_, 0, 1);
 	k_mutex_init(&mutex_);
@@ -46,7 +46,7 @@ WifiManager::WifiManager() : iface_{net_if_get_default()}
 	callbacks_registered_ = true;
 }
 
-WifiManager::~WifiManager()
+WifiManager::~WifiManager() noexcept
 {
 	if (callbacks_registered_) {
 		net_mgmt_del_event_callback(&wifi_callback_);
@@ -58,14 +58,14 @@ WifiManager::~WifiManager()
 }
 
 void WifiManager::event_handler(struct net_mgmt_event_callback *callback, std::uint64_t event,
-				struct net_if *iface)
+				struct net_if *iface) noexcept
 {
 	if (instance_ != nullptr) {
 		instance_->handle_event(event, iface, callback->info);
 	}
 }
 
-void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const void *info)
+void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const void *info) noexcept
 {
 	if (iface != iface_) {
 		return;
@@ -89,7 +89,7 @@ void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const 
 }
 
 std::expected<WifiManager::ConnectionInfo, int>
-WifiManager::connect(const Credentials &credentials, std::chrono::milliseconds timeout)
+WifiManager::connect(const Credentials &credentials, std::chrono::milliseconds timeout) noexcept
 {
 	if (iface_ == nullptr || instance_ != this) {
 		return std::unexpected(-ENODEV);
@@ -173,7 +173,7 @@ WifiManager::connect(const Credentials &credentials, std::chrono::milliseconds t
 	}
 }
 
-std::expected<void, int> WifiManager::disconnect(std::chrono::milliseconds timeout)
+std::expected<void, int> WifiManager::disconnect(std::chrono::milliseconds timeout) noexcept
 {
 	if (iface_ == nullptr || instance_ != this) {
 		return std::unexpected(-ENODEV);
@@ -201,7 +201,7 @@ std::expected<void, int> WifiManager::disconnect(std::chrono::milliseconds timeo
 	return {};
 }
 
-std::expected<void, int> WifiManager::set_power_save(bool enabled)
+std::expected<void, int> WifiManager::set_power_save(bool enabled) noexcept
 {
 	if (iface_ == nullptr || instance_ != this) {
 		return std::unexpected(-ENODEV);
@@ -217,7 +217,7 @@ std::expected<void, int> WifiManager::set_power_save(bool enabled)
 	return {};
 }
 
-WifiManager::ConnectionInfo WifiManager::status() const
+WifiManager::ConnectionInfo WifiManager::status() const noexcept
 {
 	ConnectionInfo result{};
 	result.state = state();

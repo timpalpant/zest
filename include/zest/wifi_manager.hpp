@@ -38,21 +38,21 @@ class WifiManager
 		std::uint8_t channel{};
 	};
 
-	WifiManager();
-	~WifiManager();
+	WifiManager() noexcept;
+	~WifiManager() noexcept;
 
 	WifiManager(const WifiManager &) = delete;
 	WifiManager &operator=(const WifiManager &) = delete;
 
 	[[nodiscard]] std::expected<ConnectionInfo, int>
 	connect(const Credentials &credentials,
-		std::chrono::milliseconds timeout = std::chrono::seconds{90});
+		std::chrono::milliseconds timeout = std::chrono::seconds{90}) noexcept;
 
 	[[nodiscard]] std::expected<void, int>
-	disconnect(std::chrono::milliseconds timeout = std::chrono::seconds{10});
-	[[nodiscard]] std::expected<void, int> set_power_save(bool enabled);
+	disconnect(std::chrono::milliseconds timeout = std::chrono::seconds{10}) noexcept;
+	[[nodiscard]] std::expected<void, int> set_power_save(bool enabled) noexcept;
 
-	[[nodiscard]] ConnectionInfo status() const;
+	[[nodiscard]] ConnectionInfo status() const noexcept;
 	[[nodiscard]] State state() const noexcept;
 	[[nodiscard]] bool connected() const noexcept
 	{
@@ -61,8 +61,8 @@ class WifiManager
 
       private:
 	static void event_handler(struct net_mgmt_event_callback *callback, std::uint64_t event,
-				  struct net_if *iface);
-	void handle_event(std::uint64_t event, struct net_if *iface, const void *info);
+				  struct net_if *iface) noexcept;
+	void handle_event(std::uint64_t event, struct net_if *iface, const void *info) noexcept;
 
 	struct net_if *iface_{};
 	struct net_mgmt_event_callback wifi_callback_{};

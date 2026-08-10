@@ -45,7 +45,7 @@ class Socket final
 	explicit Socket(int descriptor = -1) noexcept : descriptor_{descriptor}
 	{
 	}
-	~Socket()
+	~Socket() noexcept
 	{
 		if (descriptor_ >= 0) {
 			zsock_close(descriptor_);
@@ -84,7 +84,7 @@ class Socket final
 	int descriptor_;
 };
 
-[[nodiscard]] std::expected<ParsedUrl, HttpError> parse_url(std::string_view url)
+[[nodiscard]] std::expected<ParsedUrl, HttpError> parse_url(std::string_view url) noexcept
 {
 	if (url.empty() || url.size() > max_url_length) {
 		return std::unexpected(HttpError{HttpErrorStage::invalid_url, -EINVAL});
@@ -167,7 +167,7 @@ class Socket final
 	return result;
 }
 
-[[nodiscard]] enum http_method to_zephyr_method(HttpMethod method)
+[[nodiscard]] enum http_method to_zephyr_method(HttpMethod method) noexcept
 {
 	switch (method) {
 	case HttpMethod::get:
@@ -186,7 +186,7 @@ class Socket final
 	return HTTP_GET;
 }
 
-int send_all(int socket, std::string_view data)
+int send_all(int socket, std::string_view data) noexcept
 {
 	while (!data.empty()) {
 		const auto sent = zsock_send(socket, data.data(), data.size(), 0);
@@ -201,7 +201,7 @@ int send_all(int socket, std::string_view data)
 	return 0;
 }
 
-int optional_headers_callback(int socket, struct http_request *, void *user_data)
+int optional_headers_callback(int socket, struct http_request *, void *user_data) noexcept
 {
 	auto &context = *static_cast<RequestContext *>(user_data);
 	int bytes_sent = 0;
@@ -248,7 +248,8 @@ int optional_headers_callback(int socket, struct http_request *, void *user_data
 	return bytes_sent;
 }
 
-int response_callback(struct http_response *response, enum http_final_call, void *user_data)
+int response_callback(struct http_response *response, enum http_final_call,
+		      void *user_data) noexcept
 {
 	auto &context = *static_cast<RequestContext *>(user_data);
 	context.status_code = response->http_status_code;
@@ -265,8 +266,8 @@ int response_callback(struct http_response *response, enum http_final_call, void
 	return 0;
 }
 
-[[nodiscard]] std::expected<Socket, HttpError> connect_socket(const ParsedUrl &url,
-							      const HttpClient::Options &options)
+[[nodiscard]] std::expected<Socket, HttpError>
+connect_socket(const ParsedUrl &url, const HttpClient::Options &options) noexcept
 {
 	struct zsock_addrinfo hints{};
 	hints.ai_family = AF_UNSPEC;
@@ -352,8 +353,8 @@ HttpClient::HttpClient(Options options) noexcept : options_{options}
 {
 }
 
-std::expected<HttpResponse, HttpError> HttpClient::request(const HttpRequest &request,
-							   std::span<std::byte> response_buffer)
+std::expected<HttpResponse, HttpError>
+HttpClient::request(const HttpRequest &request, std::span<std::byte> response_buffer) noexcept
 {
 	auto parsed = parse_url(request.url);
 	if (!parsed) {
@@ -414,17 +415,16 @@ std::expected<HttpResponse, HttpError> HttpClient::request(const HttpRequest &re
 
 std::expected<HttpResponse, HttpError> HttpClient::get(std::string_view url,
 						       std::span<std::byte> response_buffer,
-						       std::span<const HttpHeader> headers)
+						       std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::get, .url = url, .headers = headers},
 		       response_buffer);
 }
 
-std::expected<HttpResponse, HttpError> HttpClient::post(std::string_view url,
-							std::span<const std::byte> body,
-							std::span<std::byte> response_buffer,
-							std::string_view content_type,
-							std::span<const HttpHeader> headers)
+std::expected<HttpResponse, HttpError>
+HttpClient::post(std::string_view url, std::span<const std::byte> body,
+		 std::span<std::byte> response_buffer, std::string_view content_type,
+		 std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::post,
 				   .url = url,
@@ -438,7 +438,7 @@ std::expected<HttpResponse, HttpError> HttpClient::put(std::string_view url,
 						       std::span<const std::byte> body,
 						       std::span<std::byte> response_buffer,
 						       std::string_view content_type,
-						       std::span<const HttpHeader> headers)
+						       std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::put,
 				   .url = url,
@@ -448,11 +448,10 @@ std::expected<HttpResponse, HttpError> HttpClient::put(std::string_view url,
 		       response_buffer);
 }
 
-std::expected<HttpResponse, HttpError> HttpClient::patch(std::string_view url,
-							 std::span<const std::byte> body,
-							 std::span<std::byte> response_buffer,
-							 std::string_view content_type,
-							 std::span<const HttpHeader> headers)
+std::expected<HttpResponse, HttpError>
+HttpClient::patch(std::string_view url, std::span<const std::byte> body,
+		  std::span<std::byte> response_buffer, std::string_view content_type,
+		  std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::patch,
 				   .url = url,
@@ -464,7 +463,7 @@ std::expected<HttpResponse, HttpError> HttpClient::patch(std::string_view url,
 
 std::expected<HttpResponse, HttpError>
 HttpClient::delete_request(std::string_view url, std::span<std::byte> response_buffer,
-			   std::span<const HttpHeader> headers)
+			   std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::delete_, .url = url, .headers = headers},
 		       response_buffer);
