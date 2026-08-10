@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Timothy Palpant
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ */
+
 /* Battery voltage measurement through a resistive divider. */
 
 #include <zest/battery_monitor.hpp>

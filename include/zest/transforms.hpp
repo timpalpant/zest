@@ -1,6 +1,13 @@
+/*
+ * Copyright (c) 2026 Timothy Palpant
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ */
+
 #pragma once
 
 #include <concepts>
+#include <cstdint>
 #include <expected>
 #include <type_traits>
 
@@ -12,56 +19,162 @@ enum class TransformError {
 	empty_input_range,
 };
 
-/** Apply a gain and offset calibration to arithmetic samples. */
-template <typename T, typename Result = double>
-	requires std::is_arithmetic_v<T> && std::is_arithmetic_v<Result>
+/** A short, static description of a transform error. */
+[[nodiscard]] constexpr const char *to_string(TransformError error) noexcept
+{
+	switch (error) {
+	case TransformError::empty_input_range:
+		return "input range is empty";
+	}
+	return "unknown transform error";
+}
+
+/**
+ * Apply a gain and offset calibration to arithmetic samples.
+ *
+ * The arithmetic type defaults to `float`, not `double`: no common Cortex-M part
+ * has a double-precision FPU, so `double` here becomes a soft-float call in what
+ * is usually a per-sample path. Prefer `IntegerCalibration` when the gain can be
+ * expressed as a ratio.
+ */
+template <typename T, typename Real = float>
+	requires std::is_arithmetic_v<T> && std::floating_point<Real>
 class Calibration
 {
       public:
-	constexpr Calibration(Result gain = Result{1}, Result offset = Result{}) noexcept
+	using value_type = Real;
+
+	constexpr Calibration(Real gain = Real{1}, Real offset = Real{}) noexcept
 		: gain_{gain}, offset_{offset}
 	{
 	}
 
-	[[nodiscard]] constexpr Result apply(T value) const noexcept
+	[[nodiscard]] constexpr Real apply(T value) const noexcept
 	{
-		return static_cast<Result>(value) * gain_ + offset_;
+		return static_cast<Real>(value) * gain_ + offset_;
+	}
+
+	[[nodiscard]] constexpr Real gain() const noexcept
+	{
+		return gain_;
+	}
+	[[nodiscard]] constexpr Real offset() const noexcept
+	{
+		return offset_;
 	}
 
       private:
-	Result gain_;
-	Result offset_;
+	Real gain_;
+	Real offset_;
 };
 
-/** Linearly map values between two numeric ranges. */
-template <typename T, typename Result = double>
-	requires std::is_arithmetic_v<T> && std::is_arithmetic_v<Result>
+/**
+ * Apply a gain and offset calibration using only integer arithmetic.
+ *
+ * The gain is the ratio `numerator / denominator`, evaluated in a wider
+ * accumulator so intermediate products do not overflow. Rounding is
+ * half-away-from-zero. This form needs no FPU at all, which makes it the right
+ * default for a sensor path on a part without one.
+ */
+template <std::integral T, typename Accumulator = std::int64_t>
+	requires std::is_signed_v<Accumulator>
+class IntegerCalibration
+{
+      public:
+	constexpr IntegerCalibration(Accumulator numerator = 1, Accumulator denominator = 1,
+				     Accumulator offset = 0) noexcept
+		: numerator_{numerator}, denominator_{denominator == 0 ? 1 : denominator},
+		  offset_{offset}
+	{
+	}
+
+	[[nodiscard]] constexpr T apply(T value) const noexcept
+	{
+		const Accumulator scaled = static_cast<Accumulator>(value) * numerator_;
+		const Accumulator half = denominator_ / 2;
+		const Accumulator rounded =
+			scaled >= 0 ? (scaled + half) / denominator_ : (scaled - half) / denominator_;
+		return static_cast<T>(rounded + offset_);
+	}
+
+      private:
+	Accumulator numerator_;
+	Accumulator denominator_;
+	Accumulator offset_;
+};
+
+/**
+ * Linearly map values between two numeric ranges.
+ *
+ * As with `Calibration`, the arithmetic type defaults to `float`.
+ */
+template <typename T, typename Real = float>
+	requires std::is_arithmetic_v<T> && std::floating_point<Real>
 class LinearMap
 {
       public:
-	constexpr LinearMap(T input_min, T input_max, Result output_min, Result output_max) noexcept
+	using value_type = Real;
+
+	constexpr LinearMap(T input_min, T input_max, Real output_min, Real output_max) noexcept
 		: input_min_{input_min}, input_max_{input_max}, output_min_{output_min},
 		  output_max_{output_max}
 	{
 	}
 
-	[[nodiscard]] constexpr std::expected<Result, TransformError> map(T value) const noexcept
+	/** Map @p value, extrapolating outside the input range. */
+	[[nodiscard]] constexpr std::expected<Real, TransformError> map(T value) const noexcept
 	{
 		if (input_min_ == input_max_) {
 			return std::unexpected(TransformError::empty_input_range);
 		}
 
-		const Result position =
-			(static_cast<Result>(value) - static_cast<Result>(input_min_)) /
-			(static_cast<Result>(input_max_) - static_cast<Result>(input_min_));
+		const Real position = (static_cast<Real>(value) - static_cast<Real>(input_min_)) /
+				      (static_cast<Real>(input_max_) - static_cast<Real>(input_min_));
 		return output_min_ + position * (output_max_ - output_min_);
+	}
+
+	/** Map @p value, clamping the result to the output range. */
+	[[nodiscard]] constexpr std::expected<Real, TransformError> map_clamped(T value) const noexcept
+	{
+		const auto mapped = map(value);
+		if (!mapped) {
+			return mapped;
+		}
+		const Real low = output_min_ < output_max_ ? output_min_ : output_max_;
+		const Real high = output_min_ < output_max_ ? output_max_ : output_min_;
+		return *mapped < low ? low : (*mapped > high ? high : *mapped);
 	}
 
       private:
 	T input_min_;
 	T input_max_;
-	Result output_min_;
-	Result output_max_;
+	Real output_min_;
+	Real output_max_;
 };
+
+/**
+ * Linearly map between integer ranges without floating point.
+ *
+ * Returns `TransformError::empty_input_range` when the input range is degenerate.
+ * Rounding is half-away-from-zero.
+ */
+template <std::integral T, typename Accumulator = std::int64_t>
+	requires std::is_signed_v<Accumulator>
+[[nodiscard]] constexpr std::expected<T, TransformError>
+integer_map(T value, T input_min, T input_max, T output_min, T output_max) noexcept
+{
+	if (input_min == input_max) {
+		return std::unexpected(TransformError::empty_input_range);
+	}
+
+	const Accumulator span = static_cast<Accumulator>(input_max) - input_min;
+	const Accumulator reach = static_cast<Accumulator>(output_max) - output_min;
+	const Accumulator offset = static_cast<Accumulator>(value) - input_min;
+	const Accumulator scaled = offset * reach;
+	const Accumulator half = (span >= 0 ? span : -span) / 2;
+	const Accumulator rounded =
+		scaled >= 0 ? (scaled + half) / span : (scaled - half) / span;
+	return static_cast<T>(output_min + rounded);
+}
 
 } /* namespace zest */

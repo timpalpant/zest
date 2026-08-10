@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Timothy Palpant
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ */
+
 #ifndef ZEST_WIFI_MANAGER_HPP_
 #define ZEST_WIFI_MANAGER_HPP_
 

@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Timothy Palpant
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ */
+
 #include <zest/wifi_manager.hpp>
 #include <zest/retry.hpp>
 

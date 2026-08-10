@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Timothy Palpant
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ */
+
 #ifndef ZEST_HTTP_CLIENT_HPP_
 #define ZEST_HTTP_CLIENT_HPP_
 

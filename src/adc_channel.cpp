@@ -1,3 +1,9 @@
+/*
+ * Copyright (c) 2026 Timothy Palpant
+ *
+ * SPDX-License-Identifier: LGPL-3.0-or-later
+ */
+
 #include <zest/adc_channel.hpp>
 
 #include <zephyr/drivers/adc.h>
