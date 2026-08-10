@@ -36,6 +36,7 @@ part has a double-precision FPU.
 | Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler` |
 | Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
 | Buffers | `SpscRingBuffer`, `MessageQueue` |
+| Telemetry | `CborWriter` |
 | Callables | `FunctionRef`, `InplaceFunction` |
 | Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()` |
 | Persistence | `Settings`, `ProvisioningManager`, `RetainedValue` |

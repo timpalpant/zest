@@ -354,13 +354,26 @@ no interrupt configuration, no ring buffer sizing, nothing beyond
 `CONFIG_SERIAL`. Its reads take a timeout, so they cannot hang a thread the way a
 raw `uart_poll_in()` loop does.
 
+## 18. Telemetry encoding
+
+`CborWriter<N>` encodes RFC 8949 into inline storage. Both `MqttClient::publish()`
+and `HttpClient::post()` want a span of bytes, and a device reporting readings
+needs something to produce one; JSON costs roughly twice the bytes and a text
+formatter, whereas CBOR needs only shifts and copies.
+
+Overflow is sticky and withholds the partial document, so a caller writes a whole
+record and checks once rather than after every field — a truncated CBOR document
+is not a smaller valid document, so returning one would be worse than returning
+nothing.
+
 ## Implementation status
 
 Everything described above is implemented. Known gaps, deliberately not yet
 covered:
 
-- No flash-backed record store over `stream_flash` or ZMS, and no CBOR writer, so
-  offline logging and compact telemetry payloads remain application code.
+- No flash-backed record store over `stream_flash` or ZMS, so offline logging
+  while the network is down remains application code. `CborWriter` covers the
+  payload encoding; the durable buffer behind it does not exist yet.
 - No GATT service or characteristic helper beyond advertising.
 - `HttpClient` exposes no response headers and does not follow redirects; Zephyr's
   client offers no user-data slot on its header callback in this version, so the
