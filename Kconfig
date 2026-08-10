@@ -49,6 +49,17 @@ config ZEST_PWM_OUTPUT
 	help
 	  Typed PWM output, dimmable and RGB LEDs, servo, and buzzer helpers.
 
+config ZEST_JSON
+	bool "Schema-driven JSON"
+	depends on JSON_LIBRARY
+	help
+	  Map C++ structs to JSON through Zephyr's descriptor-based JSON library.
+	  Tokens are deduced from member types, so JSON_TOK_* never appears in
+	  application code, and nested objects and arrays compose from their own
+	  schemas.
+
+	  Enable CONFIG_JSON_LIBRARY_FP_SUPPORT for float or double members.
+
 config ZEST_I2C
 	bool "I2cDevice"
 	depends on I2C

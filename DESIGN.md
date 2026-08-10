@@ -366,6 +366,69 @@ record and checks once rather than after every field — a truncated CBOR docume
 is not a smaller valid document, so returning one would be worse than returning
 nothing.
 
+## 19. JSON
+
+`zest/json.hpp` maps structs onto Zephyr's descriptor-driven JSON library.
+`ZEST_JSON_SCHEMA` declares a `Schema<T>` specialization holding a
+`static constexpr json_obj_descr[]`, built by `consteval` functions from the
+members' types.
+
+Deducing the token from the member type is the whole point: a hand-written
+`JSON_TOK_NUMBER` against an `int64_t` field decodes through the wrong width and
+corrupts the value silently, and the C macros cannot check that. The mapping is
+symmetric --- every token selected is handled by both Zephyr's decoder and its
+encoder --- and was chosen after confirming Zephyr's `equivalent_types()` accepts
+a document `NUMBER` against each numeric descriptor and treats `TRUE` and `FALSE`
+as interchangeable for bools.
+
+| C++ member | Token | Notes |
+| --- | --- | --- |
+| `bool` | `JSON_TOK_TRUE` | matches both `true` and `false` |
+| `int8/16/32_t` | `JSON_TOK_INT` | width taken from `field.size` |
+| `uint8/16/32_t` | `JSON_TOK_UINT` | |
+| `int64_t`, `uint64_t` | `JSON_TOK_INT64` / `UINT64` | |
+| `float`, `double` | `JSON_TOK_FLOAT_FP` / `DOUBLE_FP` | needs `JSON_LIBRARY_FP_SUPPORT` |
+| `char[N]`, `std::array<char, N>` | `JSON_TOK_STRING_BUF` | **copies** |
+| `char *`, `const char *` | `JSON_TOK_STRING` | **borrows the buffer** |
+| `enum` | underlying type's token | |
+| nested type with a schema | `JSON_TOK_OBJECT_START` | sub-descriptor from `Schema<M>` |
+| array + `std::size_t` count | `JSON_TOK_ARRAY_START` | count written through the element descriptor |
+
+`char[N]` mapping to `STRING_BUF` is a case where the C++ layer offers something
+the C API does not: Zephyr implements that token but publishes no macro for it, so
+from C the path of least resistance is the borrowing `char *` form, and the
+borrowing is easy to miss until the buffer is reused.
+
+Two implementation constraints are worth recording, because both are invisible
+until you try:
+
+- **Zephyr's array macros cannot be used from C++.** `Z_JSON_ELEMENT_DESCR` builds
+  its element descriptor with a C99 compound literal, which is not valid C++. Zest
+  builds element descriptors as named `static constexpr` members of a helper
+  template instead, which also places them in read-only memory where a
+  runtime-initialized descriptor would not be.
+- **Union arms are initialized, never assigned.** `json_obj_descr` holds an
+  anonymous union; activating one of its members by assigning to a subobject is
+  not permitted in a constant expression, so each descriptor is built by a single
+  designated initializer chosen with `if constexpr`.
+
+Structural limits are `static_assert`s or consteval diagnostics rather than silent
+truncation: offsets exceed the descriptor's 16-bit field beyond 64 KB, names
+exceed its 7-bit length beyond 127 characters, and presence is reported in a
+64-bit bitmap so a schema is capped at 64 fields.
+
+`Parsed<T>` carries that bitmap. A field that was absent keeps its
+value-initialized contents, which is indistinguishable from a field that was
+present and zero, so `has()` exists for the cases where those differ. It accepts a
+name as well as an index, searching the descriptors' own `field_name` values.
+
+### Choosing between JSON and CBOR
+
+`CborWriter` is preferable whenever both ends are yours: roughly half the bytes,
+no schema, and it supports `std::optional` omission because Zest owns that
+encoder. JSON is for interoperating with something that expects it. The two are
+not layered on each other and share nothing but the buffer conventions.
+
 ## Implementation status
 
 Everything described above is implemented. Known gaps, deliberately not yet
@@ -375,6 +438,10 @@ covered:
   while the network is down remains application code. `CborWriter` covers the
   payload encoding; the durable buffer behind it does not exist yet.
 - No GATT service or characteristic helper beyond advertising.
+- `zest/json.hpp` inherits Zephyr's constraints: parsing mutates its buffer,
+  `char *` members borrow it, every schema field is always encoded, and members
+  must be C-compatible. Omitting a field on encode, or parsing into a
+  `std::string_view`, would require owning the codec rather than wrapping it.
 - `HttpClient` exposes no response headers and does not follow redirects; Zephyr's
   client offers no user-data slot on its header callback in this version, so the
   `HeaderHandler` overload is accepted for API stability and currently ignored.

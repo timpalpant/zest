@@ -36,7 +36,7 @@ part has a double-precision FPU.
 | Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler` |
 | Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
 | Buffers | `SpscRingBuffer`, `MessageQueue` |
-| Telemetry | `CborWriter` |
+| Telemetry | `CborWriter`, `json::Schema`, `json::encode`, `json::parse` |
 | Callables | `FunctionRef`, `InplaceFunction` |
 | Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()` |
 | Persistence | `Settings`, `ProvisioningManager`, `RetainedValue` |
@@ -326,6 +326,79 @@ size the thread accordingly.
 it into RAM; `OwnedCredential<N>` copies, for a credential that arrives at run
 time. Certificate validation also needs a valid system clock, which
 `TimeSynchronizer` can set.
+
+### JSON
+
+A schema names fields; the JSON token for each one is deduced from its C++ type,
+so `JSON_TOK_*` never appears in application code:
+
+```cpp
+#include <zest/json.hpp>
+
+struct Reading {
+    std::int32_t millivolts;
+    std::int32_t centi_celsius;
+    bool charging;
+    char label[16];          // copied out of the buffer
+};
+
+ZEST_JSON_SCHEMA(Reading,
+                 ZEST_JSON_FIELD(Reading, millivolts, "mv"),
+                 ZEST_JSON_FIELD(Reading, centi_celsius, "cc"),
+                 ZEST_JSON_MEMBER(Reading, charging),   // JSON name "charging"
+                 ZEST_JSON_MEMBER(Reading, label));
+```
+
+Publishing over MQTT, or posting over HTTP:
+
+```cpp
+std::array<char, 128> text{};
+ZEST_TRY_ASSIGN(json, zest::json::encode(reading, text));
+ZEST_TRY(client.publish("sensor/1", json));            // string_view overload
+
+std::array<std::byte, 128> bytes{};
+ZEST_TRY_ASSIGN(body, zest::json::encode(reading, bytes));
+ZEST_TRY_ASSIGN(response, http.post("https://api.example.com/v1/readings", body,
+                                    response_buffer, "application/json"));
+```
+
+Parsing a response body. The buffer you passed to `HttpClient` is writable, which
+is what parsing needs:
+
+```cpp
+ZEST_TRY_ASSIGN(parsed,
+                zest::json::parse<Reading>(response_buffer.first(response->body.size())));
+
+if (parsed.has("cc")) {                 // absent and zero are different things
+    use(parsed->centi_celsius);
+}
+```
+
+Nested objects and arrays compose from their members' own schemas:
+
+```cpp
+struct Batch {
+    Reading readings[8];
+    std::size_t readings_count;         // Zephyr reports the decoded length here
+};
+ZEST_JSON_SCHEMA(Batch, ZEST_JSON_ARRAY(Batch, readings, readings_count));
+
+ZEST_TRY_ASSIGN(batch, zest::json::parse_array<Batch>(body));   // [{...},{...}]
+```
+
+Four constraints come from Zephyr's JSON library rather than from this wrapper,
+and they are worth knowing before you design a payload:
+
+- **Parsing rewrites the buffer** in place and a `const char *` member points
+  *into* it. Use `char[N]` when the value must outlive the buffer.
+- **Every schema field is always encoded.** There is no way to omit one, so
+  optional output needs a sentinel or a second schema.
+- **Members must be C-compatible**: no `std::string_view`, `std::optional` or
+  `std::span`. Use `char[N]`, a sentinel, and an array plus a `std::size_t` count.
+- `float` and `double` members need `CONFIG_JSON_LIBRARY_FP_SUPPORT=y`.
+
+`CborWriter` remains the better choice where both ends are yours: it is roughly
+half the bytes, needs no schema, and does support `std::optional` omission.
 
 ### Callbacks
 
