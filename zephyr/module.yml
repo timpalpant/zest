@@ -1,0 +1,4 @@
+name: zest
+build:
+  cmake: .
+  kconfig: Kconfig

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zest — C++23 services for Zephyr RTOS</title>
+  <meta name="description" content="Allocation-conscious C++23 Wi-Fi, HTTP, Bluetooth, and battery services for Zephyr RTOS.">
+  <meta property="og:title" content="Zest">
+  <meta property="og:description" content="Idiomatic C++23 services for Zephyr RTOS.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://timpalpant.github.io/zest/">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fbfbf8;
+      --surface: #fff;
+      --text: #20231e;
+      --muted: #667064;
+      --border: #dfe5db;
+      --accent: #4f8a3c;
+      --accent-2: #83b95f;
+      --code: #f0f4ed;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #151914;
+        --surface: #1d231c;
+        --text: #eff5eb;
+        --muted: #a7b4a2;
+        --border: #354032;
+        --accent: #8bc66a;
+        --accent-2: #b3dd86;
+        --code: #252d23;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 80% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 34rem),
+        var(--bg);
+      color: var(--text);
+      font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    .wrap { width: min(920px, calc(100% - 40px)); margin: 0 auto; }
+    header { padding: 88px 0 64px; }
+    .eyebrow {
+      color: var(--accent);
+      font-size: .82rem;
+      font-weight: 750;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 10px 0 12px;
+      font-size: clamp(3.4rem, 10vw, 6.7rem);
+      line-height: .95;
+      letter-spacing: -.065em;
+    }
+    .tagline { max-width: 640px; margin: 0; color: var(--muted); font-size: 1.25rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+    .button {
+      display: inline-block;
+      padding: 10px 17px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .button:hover { border-color: var(--accent-2); transform: translateY(-1px); }
+    section { padding: 48px 0; border-top: 1px solid var(--border); }
+    h2 { margin: 0 0 24px; font-size: 1.55rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px; }
+    .card {
+      padding: 20px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: color-mix(in srgb, var(--surface) 90%, transparent);
+    }
+    .card h3 { margin: 0 0 7px; font-size: 1rem; }
+    .card p { margin: 0; color: var(--muted); font-size: .94rem; }
+    pre {
+      margin: 0;
+      padding: 20px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: var(--code);
+      font: .9rem/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .accent { color: var(--accent); }
+    footer { padding: 36px 0 56px; color: var(--muted); font-size: .9rem; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <header class="wrap">
+    <div class="eyebrow">C++23 × Zephyr RTOS</div>
+    <h1>zest<span class="accent">::</span></h1>
+    <p class="tagline">Small, expressive services for embedded C++—explicit errors, caller-owned storage, and Zephyr underneath.</p>
+    <nav class="actions" aria-label="Project links">
+      <a class="button primary" href="api/">Browse the API</a>
+      <a class="button" href="https://github.com/timpalpant/zest">View on GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <div class="wrap">
+        <h2>Useful pieces, independently selected</h2>
+        <div class="grid">
+          <article class="card"><h3>WifiManager</h3><p>Association retries, DHCP readiness, connection status, and power-save control.</p></article>
+          <article class="card"><h3>HttpClient</h3><p>Session-style HTTP/1.1 and HTTPS with structured errors and bounded response storage.</p></article>
+          <article class="card"><h3>BluetoothManager</h3><p>BLE host lifecycle and central-role connections through an approachable stateful API.</p></article>
+          <article class="card"><h3>BatteryMonitor</h3><p>Oversampled ADC readings and constexpr LiPo state-of-charge estimation.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Feels like modern C++</h2>
+<pre><code>#include &lt;zest/wifi_manager.hpp&gt;
+
+zest::WifiManager wifi;
+auto connection = wifi.connect({
+    .ssid = "network",
+    .password = "password",
+});
+
+if (connection) {
+    printk("IPv4: %s\n", connection-&gt;address.data());
+}</code></pre>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Embedded constraints stay visible</h2>
+        <div class="grid">
+          <article class="card"><h3>No hidden response heap</h3><p>HTTP body storage comes from the caller, making capacity and lifetime explicit.</p></article>
+          <article class="card"><h3>Errors are values</h3><p><code>std::expected</code> preserves errno and structured failure stages without exceptions.</p></article>
+          <article class="card"><h3>Application-owned policy</h3><p>Drivers, network pools, TLS trust, controllers, and devicetree remain in your Zephyr configuration.</p></article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">Zest is built for <a href="https://zephyrproject.org/">Zephyr RTOS</a>. Read the <a href="api/">generated API reference</a>.</footer>
+</body>
+</html>
