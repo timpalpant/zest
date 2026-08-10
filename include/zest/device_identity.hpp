@@ -64,7 +64,8 @@ class DeviceIdentity
 	}
 
 	/** Format the identifier as lowercase hexadecimal into @p destination. */
-	[[nodiscard]] static Result<std::string_view> read_hex(std::span<char> destination) noexcept;
+	[[nodiscard]] static Result<std::string_view>
+	read_hex(std::span<char> destination) noexcept;
 
 	[[nodiscard]] static Result<std::array<std::byte, 8>> eui64() noexcept;
 };

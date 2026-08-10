@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/transforms.hpp>
 
 #include <cstdint>
@@ -67,8 +66,8 @@ constexpr bool linear_map_clamps()
 	const auto beyond = mapping.map(20);
 	const auto clamped = mapping.map_clamped(20);
 	const auto under = mapping.map_clamped(-5);
-	return beyond.has_value() && *beyond > 199.0F && clamped.has_value() &&
-	       *clamped > 99.9F && *clamped < 100.1F && under.has_value() && *under == 0.0F;
+	return beyond.has_value() && *beyond > 199.0F && clamped.has_value() && *clamped > 99.9F &&
+	       *clamped < 100.1F && under.has_value() && *under == 0.0F;
 }
 static_assert(linear_map_clamps());
 

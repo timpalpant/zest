@@ -196,8 +196,8 @@ void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const 
 	}
 }
 
-Result<WifiManager::ConnectionInfo>
-WifiManager::connect(const Credentials &credentials, std::chrono::milliseconds timeout) noexcept
+Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &credentials,
+							 std::chrono::milliseconds timeout) noexcept
 {
 	if (!owns_interface()) {
 		return fail(errors::no_device);

@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/filters.hpp>
 
 #include <cstdint>

@@ -114,7 +114,8 @@ class WifiManager
 
 	      private:
 		template <std::size_t N>
-		[[nodiscard]] static std::string_view view_of(const std::array<char, N> &text) noexcept
+		[[nodiscard]] static std::string_view
+		view_of(const std::array<char, N> &text) noexcept
 		{
 			std::size_t length = 0U;
 			while (length < N && text[length] != '\0') {
@@ -152,8 +153,8 @@ class WifiManager
 	connect(const Credentials &credentials,
 		std::chrono::milliseconds timeout = std::chrono::seconds{90}) noexcept;
 
-	[[nodiscard]] Result<>
-	disconnect(std::chrono::milliseconds timeout = std::chrono::seconds{10}) noexcept;
+	[[nodiscard]] Result<> disconnect(std::chrono::milliseconds timeout = std::chrono::seconds{
+						  10}) noexcept;
 
 	/** Ask the driver to disconnect without waiting for it to finish. */
 	[[nodiscard]] Result<> request_disconnect() noexcept;

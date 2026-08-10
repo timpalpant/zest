@@ -139,8 +139,8 @@ template <typename Rep, typename Tag, typename Ratio = std::ratio<1>> class Quan
 		using Factor = std::ratio_divide<OtherRatio, Ratio>;
 		if constexpr (std::is_floating_point_v<Rep>) {
 			return static_cast<Rep>(static_cast<Rep>(value) *
-					        static_cast<Rep>(Factor::num) /
-					        static_cast<Rep>(Factor::den));
+						static_cast<Rep>(Factor::num) /
+						static_cast<Rep>(Factor::den));
 		} else {
 			return static_cast<Rep>(static_cast<std::int64_t>(value) * Factor::num /
 						Factor::den);
@@ -170,14 +170,22 @@ template <typename To, typename Rep, typename Tag, typename Ratio>
 /** Tags naming what is being measured. */
 namespace tags
 {
-struct Voltage {};
-struct Current {};
-struct Resistance {};
-struct Power {};
-struct Charge {};
-struct Temperature {};
-struct Pressure {};
-struct Frequency {};
+struct Voltage {
+};
+struct Current {
+};
+struct Resistance {
+};
+struct Power {
+};
+struct Charge {
+};
+struct Temperature {
+};
+struct Pressure {
+};
+struct Frequency {
+};
 } /* namespace tags */
 
 /* Voltage. The base scale is the volt; readings are usually millivolts. */

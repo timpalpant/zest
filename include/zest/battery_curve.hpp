@@ -93,8 +93,8 @@ interpolate_validated_curve(std::int32_t millivolts, std::span<const CurvePoint>
 			const std::int64_t voltage_span = high.millivolts - low.millivolts;
 			const std::int64_t offset = millivolts - low.millivolts;
 
-			return static_cast<std::uint8_t>(low.percent + offset * percentage_span /
-								     voltage_span);
+			return static_cast<std::uint8_t>(low.percent +
+							 offset * percentage_span / voltage_span);
 		}
 	}
 

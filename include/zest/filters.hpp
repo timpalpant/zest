@@ -255,8 +255,7 @@ class ShiftMovingAverage
 			accumulator_ = static_cast<Accumulator>(sample) << Shift;
 			initialized_ = true;
 		} else {
-			accumulator_ +=
-				static_cast<Accumulator>(sample) - (accumulator_ >> Shift);
+			accumulator_ += static_cast<Accumulator>(sample) - (accumulator_ >> Shift);
 		}
 		return value();
 	}
@@ -357,7 +356,7 @@ template <std::totally_ordered T> class ThresholdDetector
 	[[nodiscard]] constexpr bool active(const T &value) const noexcept
 	{
 		return direction_ == ThresholdDirection::above ? value >= threshold_
-							      : value <= threshold_;
+							       : value <= threshold_;
 	}
 
 	[[nodiscard]] constexpr T threshold() const noexcept

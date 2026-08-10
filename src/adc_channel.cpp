@@ -119,8 +119,7 @@ Result<Millivolts> AdcChannel::read_average_millivolts(std::size_t samples) cons
 		ZEST_TRY_ASSIGN(raw, read_raw());
 		total += raw;
 	}
-	return to_millivolts(
-		static_cast<std::int32_t>(total / static_cast<std::int64_t>(samples)));
+	return to_millivolts(static_cast<std::int32_t>(total / static_cast<std::int64_t>(samples)));
 }
 
 } /* namespace zest */

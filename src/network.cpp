@@ -32,8 +32,7 @@ void close_descriptor(int &descriptor) noexcept
 	}
 }
 
-[[nodiscard]] Result<> open_descriptor(int &descriptor, int family, int type,
-				       int protocol) noexcept
+[[nodiscard]] Result<> open_descriptor(int &descriptor, int family, int type, int protocol) noexcept
 {
 	if (descriptor >= 0) {
 		return fail(errors::already);

@@ -79,9 +79,9 @@ class BluetoothManager
 	[[nodiscard]] Result<> start_advertising(const AdvertisingOptions &options = {}) noexcept;
 	[[nodiscard]] Result<> stop_advertising() noexcept;
 
-	[[nodiscard]] Result<>
-	connect(const Peer &peer,
-		std::chrono::milliseconds timeout = std::chrono::seconds{30}) noexcept;
+	[[nodiscard]] Result<> connect(const Peer &peer,
+				       std::chrono::milliseconds timeout = std::chrono::seconds{
+					       30}) noexcept;
 	[[nodiscard]] Result<> disconnect() noexcept;
 
 	template <typename F> void on_state_change(F &&handler) noexcept

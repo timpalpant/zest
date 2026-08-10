@@ -115,7 +115,8 @@ class Socket final
 [[nodiscard]] std::expected<ParsedUrl, HttpError> parse_url(std::string_view url) noexcept
 {
 	if (url.empty() || url.size() > max_url_length) {
-		return std::unexpected(error_at(HttpErrorStage::invalid_url, errors::invalid_argument));
+		return std::unexpected(
+			error_at(HttpErrorStage::invalid_url, errors::invalid_argument));
 	}
 
 	ParsedUrl result;
@@ -146,7 +147,8 @@ class Socket final
 		path = path.substr(0, fragment);
 	}
 	if (path.empty() || path.front() != '/') {
-		return std::unexpected(error_at(HttpErrorStage::invalid_url, errors::invalid_argument));
+		return std::unexpected(
+			error_at(HttpErrorStage::invalid_url, errors::invalid_argument));
 	}
 
 	std::string_view host = authority;
@@ -194,14 +196,16 @@ class Socket final
 	}
 
 	if (host.empty() || host.size() > max_host_length || path.size() > max_path_length) {
-		return std::unexpected(error_at(HttpErrorStage::invalid_url, errors::name_too_long));
+		return std::unexpected(
+			error_at(HttpErrorStage::invalid_url, errors::name_too_long));
 	}
 	if (authority.find('@') != std::string_view::npos) {
 		/*
 		 * Credentials in URLs are rejected to avoid accidental disclosure
 		 * through logs and redirects.
 		 */
-		return std::unexpected(error_at(HttpErrorStage::invalid_url, errors::invalid_argument));
+		return std::unexpected(
+			error_at(HttpErrorStage::invalid_url, errors::invalid_argument));
 	}
 
 	std::ranges::copy(host, result.host.begin());
@@ -331,9 +335,9 @@ connect_socket(const ParsedUrl &url, const HttpClient::Options &options) noexcep
 	const int dns_result =
 		zsock_getaddrinfo(url.host.data(), url.port.data(), &hints, &addresses);
 	if (dns_result != 0 || addresses == nullptr) {
-		return std::unexpected(error_at(HttpErrorStage::dns,
-						dns_result != 0 ? Error{dns_result}
-								: errors::host_unreachable));
+		return std::unexpected(
+			error_at(HttpErrorStage::dns,
+				 dns_result != 0 ? Error{dns_result} : errors::host_unreachable));
 	}
 
 	Error last_error = errors::host_unreachable;
@@ -542,8 +546,7 @@ HttpResult<HttpResponse> HttpClient::request(const HttpRequest &request,
 	return this->request(request, response_buffer);
 }
 
-HttpResult<HttpResponse> HttpClient::get(std::string_view url,
-					 std::span<std::byte> response_buffer,
+HttpResult<HttpResponse> HttpClient::get(std::string_view url, std::span<std::byte> response_buffer,
 					 std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::get, .url = url, .headers = headers},

@@ -55,7 +55,8 @@ class StaticCredential
 		if (credential.empty()) {
 			return fail(errors::invalid_argument);
 		}
-		ZEST_TRY(check(tls_credential_add(tag, type, credential.data(), credential.size())));
+		ZEST_TRY(
+			check(tls_credential_add(tag, type, credential.data(), credential.size())));
 		tag_ = tag;
 		type_ = type;
 		size_ = credential.size();

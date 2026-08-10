@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/units.hpp>
 
 #include <cstdint>

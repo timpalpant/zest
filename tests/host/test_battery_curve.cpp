@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/battery_curve.hpp>
 
 #include <array>
@@ -24,10 +23,10 @@ constexpr auto curve = battery_curve(cells);
 
 static_assert(curve.percent_at(4300) == 100); /* clamped above */
 static_assert(curve.percent_at(4200) == 100);
-static_assert(curve.percent_at(3950) == 55);  /* midway on the upper segment */
+static_assert(curve.percent_at(3950) == 55); /* midway on the upper segment */
 static_assert(curve.percent_at(3700) == 10);
 static_assert(curve.percent_at(3300) == 0);
-static_assert(curve.percent_at(3000) == 0);   /* clamped below */
+static_assert(curve.percent_at(3000) == 0); /* clamped below */
 static_assert(curve.full_millivolts() == 4200);
 static_assert(curve.empty_millivolts() == 3300);
 

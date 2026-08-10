@@ -86,8 +86,8 @@ class PidController
 					       -limits_.integral_limit, limits_.integral_limit);
 		}
 
-		const Real unclamped = gains_.proportional * error + candidate -
-				       gains_.derivative * derivative;
+		const Real unclamped =
+			gains_.proportional * error + candidate - gains_.derivative * derivative;
 
 		if (unclamped > limits_.output_max) {
 			/* Saturated high: only integrate if the error pulls back down. */

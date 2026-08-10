@@ -65,9 +65,8 @@ template <typename R, typename... Args> class FunctionRef<R(Args...)>
 		: target_{.object = const_cast<void *>(
 				  static_cast<const void *>(std::addressof(callable)))},
 		  invoke_{[](Target target, Args... args) -> R {
-			  return static_cast<R>(
-				  (*static_cast<std::remove_reference_t<F> *>(target.object))(
-					  std::forward<Args>(args)...));
+			  return static_cast<R>((*static_cast<std::remove_reference_t<F> *>(
+				  target.object))(std::forward<Args>(args)...));
 		  }}
 	{
 	}
@@ -105,9 +104,8 @@ template <typename R, typename... Args> class FunctionRef<R(Args...) noexcept>
 		: target_{.object = const_cast<void *>(
 				  static_cast<const void *>(std::addressof(callable)))},
 		  invoke_{[](Target target, Args... args) noexcept -> R {
-			  return static_cast<R>(
-				  (*static_cast<std::remove_reference_t<F> *>(target.object))(
-					  std::forward<Args>(args)...));
+			  return static_cast<R>((*static_cast<std::remove_reference_t<F> *>(
+				  target.object))(std::forward<Args>(args)...));
 		  }}
 	{
 	}
@@ -244,18 +242,22 @@ class InplaceFunction<R(Args...) noexcept, Capacity>
 
 		static constexpr Operations operations{
 			.invoke = [](std::byte *storage, Args... args) noexcept -> R {
-				return static_cast<R>((*std::launder(
-					reinterpret_cast<Callable *>(storage)))(
-					std::forward<Args>(args)...));
+				return static_cast<R>((*std::launder(reinterpret_cast<Callable *>(
+					storage)))(std::forward<Args>(args)...));
 			},
-			.destroy = [](std::byte *storage) noexcept {
-				std::launder(reinterpret_cast<Callable *>(storage))->~Callable();
-			},
-			.move = [](std::byte *from, std::byte *to) noexcept {
-				auto *source = std::launder(reinterpret_cast<Callable *>(from));
-				::new (static_cast<void *>(to)) Callable{std::move(*source)};
-				source->~Callable();
-			},
+			.destroy =
+				[](std::byte *storage) noexcept {
+					std::launder(reinterpret_cast<Callable *>(storage))
+						->~Callable();
+				},
+			.move =
+				[](std::byte *from, std::byte *to) noexcept {
+					auto *source =
+						std::launder(reinterpret_cast<Callable *>(from));
+					::new (static_cast<void *>(to))
+						Callable{std::move(*source)};
+					source->~Callable();
+				},
 		};
 		operations_ = &operations;
 	}

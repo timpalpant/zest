@@ -48,7 +48,8 @@ class AdcChannel
 	 * once rather than once per sample. Drivers that reject multi-sampling fall
 	 * back to repeated single conversions automatically.
 	 */
-	[[nodiscard]] Result<Millivolts> read_average_millivolts(std::size_t samples) const noexcept;
+	[[nodiscard]] Result<Millivolts>
+	read_average_millivolts(std::size_t samples) const noexcept;
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>

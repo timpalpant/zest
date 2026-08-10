@@ -103,7 +103,8 @@ template <std::size_t Capacity> class Poller
 				? -1
 				: static_cast<int>(timeout.count() < 0 ? 0 : timeout.count());
 
-		const int ready = zsock_poll(entries_.data(), static_cast<int>(count_), milliseconds);
+		const int ready =
+			zsock_poll(entries_.data(), static_cast<int>(count_), milliseconds);
 		if (ready < 0) {
 			return fail(errno == 0 ? errors::io_error.value() : -errno);
 		}

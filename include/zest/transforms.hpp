@@ -92,8 +92,8 @@ class IntegerCalibration
 	{
 		const Accumulator scaled = static_cast<Accumulator>(value) * numerator_;
 		const Accumulator half = denominator_ / 2;
-		const Accumulator rounded =
-			scaled >= 0 ? (scaled + half) / denominator_ : (scaled - half) / denominator_;
+		const Accumulator rounded = scaled >= 0 ? (scaled + half) / denominator_
+							: (scaled - half) / denominator_;
 		return static_cast<T>(rounded + offset_);
 	}
 
@@ -128,13 +128,15 @@ class LinearMap
 			return std::unexpected(TransformError::empty_input_range);
 		}
 
-		const Real position = (static_cast<Real>(value) - static_cast<Real>(input_min_)) /
-				      (static_cast<Real>(input_max_) - static_cast<Real>(input_min_));
+		const Real position =
+			(static_cast<Real>(value) - static_cast<Real>(input_min_)) /
+			(static_cast<Real>(input_max_) - static_cast<Real>(input_min_));
 		return output_min_ + position * (output_max_ - output_min_);
 	}
 
 	/** Map @p value, clamping the result to the output range. */
-	[[nodiscard]] constexpr std::expected<Real, TransformError> map_clamped(T value) const noexcept
+	[[nodiscard]] constexpr std::expected<Real, TransformError>
+	map_clamped(T value) const noexcept
 	{
 		const auto mapped = map(value);
 		if (!mapped) {
@@ -172,8 +174,7 @@ integer_map(T value, T input_min, T input_max, T output_min, T output_max) noexc
 	const Accumulator offset = static_cast<Accumulator>(value) - input_min;
 	const Accumulator scaled = offset * reach;
 	const Accumulator half = (span >= 0 ? span : -span) / 2;
-	const Accumulator rounded =
-		scaled >= 0 ? (scaled + half) / span : (scaled - half) / span;
+	const Accumulator rounded = scaled >= 0 ? (scaled + half) / span : (scaled - half) / span;
 	return static_cast<T>(output_min + rounded);
 }
 

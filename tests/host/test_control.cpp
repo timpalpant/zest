@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/control.hpp>
 
 #include <array>
@@ -19,7 +18,8 @@ using namespace std::chrono_literals;
 /* Proportional-only control is a straight gain on the error. */
 constexpr bool proportional_only()
 {
-	PidController<float> pid{{.proportional = 2.0F}, {.output_min = -100.0F, .output_max = 100.0F}};
+	PidController<float> pid{{.proportional = 2.0F},
+				 {.output_min = -100.0F, .output_max = 100.0F}};
 	const float command = pid.update(10.0F, 4.0F, 1s);
 	return command > 11.9F && command < 12.1F;
 }
@@ -28,7 +28,8 @@ static_assert(proportional_only());
 /* The command is clamped, and saturation is reported. */
 constexpr bool clamps_output()
 {
-	PidController<float> pid{{.proportional = 10.0F}, {.output_min = -5.0F, .output_max = 5.0F}};
+	PidController<float> pid{{.proportional = 10.0F},
+				 {.output_min = -5.0F, .output_max = 5.0F}};
 	const float command = pid.update(10.0F, 0.0F, 1s);
 	return command == 5.0F && pid.saturated();
 }
@@ -51,10 +52,9 @@ int main()
 
 	/* Anti-windup: while saturated, an error pushing further in must not integrate. */
 	{
-		PidController<float> pid{{.proportional = 1.0F, .integral = 50.0F},
-					 {.output_min = -10.0F,
-					  .output_max = 10.0F,
-					  .integral_limit = 1000.0F}};
+		PidController<float> pid{
+			{.proportional = 1.0F, .integral = 50.0F},
+			{.output_min = -10.0F, .output_max = 10.0F, .integral_limit = 1000.0F}};
 		for (int i = 0; i < 20; ++i) {
 			(void)pid.update(100.0F, 0.0F, 10ms);
 		}
@@ -121,8 +121,16 @@ int main()
 
 	/* A table-driven state machine ignores events it does not accept. */
 	{
-		enum class Link { down, joining, up };
-		enum class Signal { start, joined, lost };
+		enum class Link {
+			down,
+			joining,
+			up
+		};
+		enum class Signal {
+			start,
+			joined,
+			lost
+		};
 
 		constexpr std::array table{
 			Transition<Link, Signal>{Link::down, Signal::start, Link::joining},

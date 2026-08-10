@@ -40,8 +40,8 @@ inline void report(bool passed, std::string_view expression, std::string_view fi
 }
 
 template <typename Lhs, typename Rhs>
-void check_equal(const Lhs &lhs, const Rhs &rhs, std::string_view expression,
-		 std::string_view file, int line) noexcept
+void check_equal(const Lhs &lhs, const Rhs &rhs, std::string_view expression, std::string_view file,
+		 int line) noexcept
 {
 	report(lhs == rhs, expression, file, line);
 }

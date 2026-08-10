@@ -230,7 +230,8 @@ class MessageQueue
 
 	MessageQueue() noexcept
 	{
-		k_msgq_init(&queue_, reinterpret_cast<char *>(storage_.data()), sizeof(T), Capacity);
+		k_msgq_init(&queue_, reinterpret_cast<char *>(storage_.data()), sizeof(T),
+			    Capacity);
 	}
 
 	MessageQueue(const MessageQueue &) = delete;

@@ -197,15 +197,16 @@ Result<> BluetoothManager::connect(const Peer &peer, std::chrono::milliseconds t
 
 	const struct bt_conn_le_create_param create_params = BT_CONN_LE_CREATE_PARAM_INIT(
 		BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, BT_GAP_SCAN_FAST_INTERVAL);
-	const struct bt_le_conn_param connection_params = BT_LE_CONN_PARAM_INIT(
-		BT_GAP_INIT_CONN_INT_MIN, BT_GAP_INIT_CONN_INT_MAX, 0, BT_GAP_MS_TO_CONN_TIMEOUT(4000));
+	const struct bt_le_conn_param connection_params =
+		BT_LE_CONN_PARAM_INIT(BT_GAP_INIT_CONN_INT_MIN, BT_GAP_INIT_CONN_INT_MAX, 0,
+				      BT_GAP_MS_TO_CONN_TIMEOUT(4000));
 
 	connection_error_ = 0;
 	state_changed_.reset();
 	set_state(State::connecting);
 
-	if (const int rc = bt_conn_le_create(&address, &create_params, &connection_params,
-					     &connection_);
+	if (const int rc =
+		    bt_conn_le_create(&address, &create_params, &connection_params, &connection_);
 	    rc != 0) {
 		set_state(State::enabled);
 		return fail(rc);

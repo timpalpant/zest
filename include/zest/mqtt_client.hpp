@@ -73,8 +73,7 @@ class MqttClient
 
 	template <typename F>
 	[[nodiscard]] Result<> configure(const ResolvedAddress &broker,
-					 const MqttConnectionOptions &options,
-					 F &&handler) noexcept
+					 const MqttConnectionOptions &options, F &&handler) noexcept
 	{
 		handler_ = std::forward<F>(handler);
 		return configure_internal(broker, options);
@@ -104,8 +103,8 @@ class MqttClient
 		client_.transport.tls.config.peer_verify = peer_verify;
 		client_.transport.tls.config.sec_tag_list = security_tags_.data();
 		client_.transport.tls.config.sec_tag_count = tags.size();
-		client_.transport.tls.config.hostname = reinterpret_cast<const char *>(
-			hostname_.data());
+		client_.transport.tls.config.hostname =
+			reinterpret_cast<const char *>(hostname_.data());
 		return {};
 	}
 #endif
@@ -284,7 +283,8 @@ class MqttClient
 	[[nodiscard]] Result<> configure_internal(const ResolvedAddress &broker,
 						  const MqttConnectionOptions &options) noexcept
 	{
-		if (options.client_id.empty() || options.client_id.size() > client_id_.size() - 1U ||
+		if (options.client_id.empty() ||
+		    options.client_id.size() > client_id_.size() - 1U ||
 		    options.username.size() > username_.size() - 1U ||
 		    options.password.size() > password_.size() - 1U ||
 		    (!options.password.empty() && options.username.empty())) {

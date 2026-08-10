@@ -1,336 +1,357 @@
+<!--
+Copyright (c) 2026 Timothy Palpant
+
+SPDX-License-Identifier: LGPL-3.0-or-later
+-->
+
 # Zest design and component guide
 
-Zest is an allocation-conscious C++23 library that complements Zephyr's C
-APIs with typed hardware handles, reusable embedded behavior, and
-application-level services. It favors explicit initialization, explicit
-errors, caller-owned storage, static composition, and `noexcept` APIs.
+Zest is an allocation-conscious C++23 library that complements Zephyr's C APIs
+with typed hardware handles, reusable embedded behavior, and application-level
+services. It favors explicit initialization, explicit errors, caller-owned
+storage, static composition, and `noexcept` APIs.
 
 ## Relationship with zpp
 
 [lowlander/zpp](https://github.com/lowlander/zpp) is a similar but distinct
-project. It describes itself as an experimental C++20 wrapper around Zephyr's
-C API and currently covers primarily kernel and standard-library-adjacent
-facilities: threads, mutexes, condition variables, semaphores, timers, polling,
-futexes, FIFOs, heaps, memory slabs, clocks, formatting, and result/error
-types. It is header-only, declares its API unstable, and its latest commit was
-made in January 2023 for the Zephyr 3.1 era.
+project. It describes itself as an experimental C++20 wrapper around Zephyr's C
+API and currently covers primarily kernel and standard-library-adjacent
+facilities. It is header-only, declares its API unstable, and its latest commit
+was made in January 2023 for the Zephyr 3.1 era.
 
-Zest will **complement zpp without depending on it**:
+Zest complements zpp **without depending on it**:
 
-- Zest owns typed peripheral wrappers, signal-processing helpers, and
-  application services.
-- Zest does not attempt to replace the standard library or zpp with a broad
-  kernel-primitives layer. Its few kernel helpers are fixed-storage building
-  blocks (`MessageQueue`, `WorkItem`, `PeriodicTimer`, and `StaticThread`) whose
-  ownership or callback semantics are useful to the higher application layers.
-- Zest uses the C++23 standard library directly where the configured Zephyr
-  toolchain provides it, including `std::expected`, `std::span`, and
-  `std::chrono`.
-- When the standard library does not expose required Zephyr semantics, Zest
-  uses the Zephyr API directly and keeps that choice local to the relevant
-  abstraction.
-- Public wrappers may expose native Zephyr handles when this materially
-  improves interoperability, but zpp is not a build or API dependency.
-- An optional adapter package could be considered later if active zpp users
-  request it. It does not belong in the core library.
-
-This boundary avoids coupling Zest to an inactive, unstable dependency while
-leaving both libraries usable in the same west workspace.
+- Zest owns typed peripheral wrappers, signal-processing helpers, control
+  primitives, and application services.
+- Zest does not attempt to replace the standard library with a broad
+  kernel-primitives layer. Its kernel helpers are the fixed-storage building
+  blocks the higher layers need, plus the few primitives whose absence forced
+  application code back to the C API.
+- Zest uses the C++23 standard library directly where the configured toolchain
+  provides it, including `std::expected`, `std::span`, and `std::chrono`.
+- Public wrappers expose native Zephyr handles where that materially improves
+  interoperability, but zpp is not a build or API dependency.
 
 ## Architectural layers
 
-Zest is organized conceptually into three layers:
-
 | Layer | Examples | Purpose |
 | --- | --- | --- |
+| Vocabulary | `Error`, `Result<T>`, `Quantity`, `FunctionRef` | Types every other layer speaks in |
 | Hardware handles | `AdcChannel`, `GpioOutput`, `PwmOutput` | Thin, typed Zephyr wrappers |
-| Reusable behavior | `MovingAverage`, `Debouncer`, `RetryPolicy` | Hardware-independent composition |
+| Reusable behavior | `MovingAverage`, `PidController`, `RetryPolicy` | Hardware-independent, host-testable |
 | Services | `BatteryMonitor`, `WifiManager`, `HttpClient` | Stateful application operations |
 
-Zephyr already supplies hardware abstraction through `device`,
-`adc_dt_spec`, `gpio_dt_spec`, and related devicetree-aware structures. Zest
-does not add a conventional inheritance hierarchy such as
-`Peripheral -> AnalogPeripheral -> AdcChannel`. Thin value-semantic wrappers
-instead add safe initialization, typed results, consistent errors, and
-composable behavior.
+Zephyr already supplies hardware abstraction through `device`, `adc_dt_spec`,
+`gpio_dt_spec`, and related devicetree-aware structures. Zest does not add an
+inheritance hierarchy over them. Thin value-semantic wrappers instead add safe
+initialization, typed results, consistent errors, and composable behavior.
 
 ## Common API conventions
 
 - Constructors capture configuration and do not perform fallible work.
-- Fallible setup is performed by an explicit `init()` or `connect()` call.
-- Expected operational failures use `std::expected`.
+- Fallible setup is performed by an explicit `init()`, `start()`, or `connect()`.
+- Expected operational failures use `Result<T>`; see the error model below.
 - Public operations that cannot throw are marked `noexcept`.
-- Logical states such as GPIO active/inactive are preferred over raw
-  electrical levels.
-- Buffers are fixed-size or caller-owned unless dynamic allocation is an
-  explicit feature of the abstraction.
-- Hardware-independent algorithms are header-only and host-testable where
-  practical.
-- Runtime polymorphism and virtual base classes are avoided unless a concrete
-  use case requires them.
-- ISR-facing APIs do not invoke arbitrary owning callbacks or allocate memory.
+- Logical states such as GPIO active/inactive are preferred over raw electrical
+  levels.
+- Buffers are fixed-size or caller-owned unless dynamic allocation is an explicit
+  feature of the abstraction.
+- Hardware-independent algorithms are header-only and host-tested.
+- Per-sample and per-update paths use integer or `float` arithmetic, never
+  `double`.
+- Runtime polymorphism and virtual bases are avoided unless a concrete use case
+  requires them.
+- ISR-facing APIs neither allocate nor invoke arbitrary owning callbacks.
 
-## 1. ADC channels
+## 1. The error model
 
-`AdcChannel` removes Zephyr ADC sequence and conversion boilerplate:
+`Result<T>` is `std::expected<T, Error>`, and `Result<>` spells the void case.
+`Error` wraps a negative errno in a trivially copyable type the size of an `int`,
+so returning one costs nothing extra.
+
+Construction is `explicit`. An `int` in this library is a value; only code that
+has decided an `int` *is* a failure may say so. That closes the gap where an
+error could be confused with a count, a length, or a descriptor.
+
+Failures that are not errno values keep their own types rather than being folded
+in:
+
+| Type | Domain |
+| --- | --- |
+| `Error` | Negative errno from a Zephyr C API |
+| `DnsError` | `enum dns_resolve_status` |
+| `CurveError` | Discharge-curve validation |
+| `TransformError` | Degenerate numeric ranges |
+| `HttpError` | A request stage plus its `Error` cause |
+
+Keeping DNS separate is not cosmetic: `DNS_EAI_NONAME` is `-2`, which as an errno
+reads as `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`, which reads as `-ENOMEM`.
+Returning them as a bare `int` made the two indistinguishable.
+
+`check()`, `check_value()` and `check_positive()` translate the
+`rc < 0 ? error : value` shape that nearly every Zephyr call has, and `ZEST_TRY` /
+`ZEST_TRY_ASSIGN` propagate without nesting. `Error::message()` is Kconfig-gated
+so a flash-tight image can drop the table.
+
+## 2. Units
+
+`Quantity<Rep, Tag, Ratio>` follows the pattern `std::chrono::duration` proves
+works: a representation, a tag saying *what* is measured, and a `std::ratio`
+saying at what scale. Conversions that cannot lose information are implicit; the
+rest need `quantity_cast`. Different tags never interconvert, so millivolts
+cannot be passed where ohms are wanted.
+
+The representation is the caller's choice, so nothing here forces floating point
+onto a part without an FPU.
+
+## 3. Callables
+
+`FunctionRef<Sig>` is a two-pointer non-owning reference for callbacks scoped to
+a call. `InplaceFunction<Sig, N>` owns a callable in fixed inline storage.
+
+Both exist because `void (*)(void *)` plus a context argument does not accept a
+lambda that captures, which forced application code to write static trampolines
+and cast context pointers by hand — precisely the boilerplate this library exists
+to remove. `WorkItem`, `DelayableWorkItem`, `StaticThread`, `MqttClient`,
+`WifiManager` and `BluetoothManager` all take capturing lambdas, and none of them
+allocate.
+
+A callable too large for the configured storage is a compile error naming the
+size required, never a silent allocation.
+
+## 4. Arithmetic and the FPU
+
+No common Cortex-M part — M0, M0+, M3, M4F or M33 — has a double-precision FPU.
+`double` in a per-sample path is therefore a soft-float library call costing
+hundreds of cycles and several hundred bytes of `__aeabi_d*` in the image.
+
+Zest defaults to `float` where floating point is natural and provides an integer
+alternative wherever one is exact:
+
+| Floating point | Integer alternative |
+| --- | --- |
+| `ExponentialMovingAverage<T, float>` | `ShiftMovingAverage<T, Shift>` |
+| `Calibration<T, float>` | `IntegerCalibration<T>` |
+| `LinearMap<T, float>` | `integer_map<T>()` |
+| `SlewRateLimiter<float>` | `slew_toward<T>()` |
+| `PwmOutput::set_duty_cycle(float)` | `PwmOutput::set_duty(PerMille)` |
+
+`ExponentialBackoff` uses an integer percentage growth factor, and `RgbLed`,
+`Servo` and `Buzzer` scale in per-mille.
+
+## 5. ADC channels
 
 ```cpp
 zest::AdcChannel channel{ADC_DT_SPEC_GET(DT_ALIAS(sensor))};
 
-auto ready = channel.init();
-auto raw = channel.read_raw();
-auto millivolts = channel.read_millivolts();
-auto average = channel.read_average_millivolts<16>();
+ZEST_TRY(channel.init());
+ZEST_TRY_ASSIGN(raw, channel.read_raw());
+ZEST_TRY_ASSIGN(millivolts, channel.read_average_millivolts(16));
 ```
 
-Public interface:
+Sample width follows the channel's configured resolution, so an 18- or 24-bit
+part is read correctly and an unsigned 16-bit reading above `0x7FFF` does not come
+back negative.
 
-```cpp
-class AdcChannel {
-public:
-    constexpr explicit AdcChannel(adc_dt_spec spec) noexcept;
-
-    [[nodiscard]] std::expected<void, int> init() const noexcept;
-    [[nodiscard]] std::expected<std::int32_t, int> read_raw() const noexcept;
-    [[nodiscard]] std::expected<std::int32_t, int>
-    read_millivolts() const noexcept;
-
-    template<std::size_t Samples>
-    [[nodiscard]] std::expected<std::int32_t, int>
-    read_average_millivolts() const noexcept;
-};
-```
-
-`BatteryMonitor` composes an `AdcChannel` and adds only divider scaling:
-
-```text
-AdcChannel
-    ↓
-VoltageDivider / BatteryMonitor
-    ↓
-estimate_charge_percent()
-```
+Averaging uses `adc_sequence_options::extra_samplings`, entering the driver once
+for N samples instead of N times, with a fallback for drivers that decline
+multi-sampling.
 
 `VoltageDivider` is the reusable adaptor between `AdcChannel` and
-`BatteryMonitor`; it accepts the measured-output and full-divider resistance
-and supports a compile-time sample count.
+`BatteryMonitor`; charge estimation is separate, via `BatteryCurve`:
 
-## 2. GPIO outputs
-
-`GpioOutput` is a small value-semantic wrapper around `gpio_dt_spec`:
-
-```cpp
-zest::GpioOutput led{GPIO_DT_SPEC_GET(DT_ALIAS(status_led), gpios)};
-
-led.init(zest::GpioState::inactive);
-led.set(zest::GpioState::active);
-led.toggle();
+```text
+AdcChannel -> VoltageDivider -> BatteryMonitor -> BatteryCurve::percent_at()
 ```
 
-`active` and `inactive` respect devicetree flags such as `GPIO_ACTIVE_LOW`;
-applications should rarely deal in raw electrical high and low values.
+`battery_curve()` is `consteval`, so a malformed literal curve fails the build
+rather than becoming a runtime error nobody handles. `percent_at()` cannot fail.
 
-```cpp
-enum class GpioState {
-    inactive,
-    active,
-};
+## 6. GPIO
 
-class GpioOutput {
-public:
-    constexpr explicit GpioOutput(gpio_dt_spec spec) noexcept;
+`GpioOutput` tracks the last state it drove, so `state()` is exact and
+infallible. This replaces reading the pin back: Zephyr documents
+`gpio_pin_get_dt()` for *input* pins, and a pin configured `GPIO_OUTPUT_*` has its
+input buffer disabled on most SoCs, so the read returned a driver constant dressed
+up as a `GpioState`.
 
-    [[nodiscard]] std::expected<void, int>
-    init(GpioState initial = GpioState::inactive) const noexcept;
-    [[nodiscard]] std::expected<void, int> set(GpioState) const noexcept;
-    [[nodiscard]] std::expected<void, int> toggle() const noexcept;
-    [[nodiscard]] std::expected<GpioState, int> get() const noexcept;
-};
-```
+`read_pin()` remains for cases where the electrical level genuinely matters, and
+refuses unless `init(state, /* enable_readback = */ true)` configured for it.
 
-## 3. GPIO inputs and buttons
+Because the object carries state, `set()` and `toggle()` are non-const.
 
-Raw digital input remains separate from button semantics:
+## 7. Buttons
 
-```cpp
-zest::GpioInput input{button_spec};
-input.init();
-auto state = input.get();
-```
+`Button` adds application behavior without invoking application code from an ISR:
+`enable_interrupts()` translates both-edge activity into a semaphore, and `poll()`
+and `wait()` perform debouncing and event decoding in thread context. Events are
+`pressed`, `released`, `clicked` and `long_pressed`.
 
-`Button` adds application behavior without invoking application callbacks from
-an ISR:
+## 8. Sensors
 
-```cpp
-zest::Button button{button_spec, {
-    .debounce = 30ms,
-    .long_press = 1s,
-}};
+Sensor access targets Zephyr's Read-and-Decode API rather than building a large
+abstraction over the older `sensor_sample_fetch()` and `sensor_channel_get()`
+pair:
 
-auto event = button.wait();
-```
+- `SensorReader` — one blocking read of one sensor or channel.
+- `SensorBatch` — several channels in one operation.
+- `AsyncSensorReader` — RTIO mempool-backed acquisition.
+- `SensorChannel<Data, EncodedBufferSize>` — fixed encoded storage for one typed
+  channel.
+- `PeriodicSampler<Source>` — owns the scheduling policy rather than the sensor.
+  A read error does not advance the deadline, so a failing sensor is retried on
+  the next poll rather than at the sampling interval.
 
-Events include `pressed`, `released`, `clicked`, and `long_pressed`.
-`enable_interrupts()` translates both-edge ISR activity into a semaphore;
-`poll()` and `wait()` perform debouncing and event decoding in thread context.
-The class does not own a `std::function` or invoke arbitrary application code
-from an ISR.
+RTIO is explicit: concurrent, batched or streaming I/O uses an
+application-provided context and mempool.
 
-## 4. Sampling and signal-processing helpers
+## 9. Buffers
 
-These helpers work with ADCs, sensors, and derived measurements:
+`SpscRingBuffer<T, N>` is a lock-free ring for exactly one producer and one
+consumer. It is what a sampling callback pushes into and a worker drains:
+`MessageQueue` is a kernel synchronisation primitive that can block, wakes a
+waiter per message, and cannot be inspected without removing, which makes it the
+wrong tool for buffering a sample stream.
 
-```cpp
-zest::MovingAverage<std::int32_t, 16> average;
-zest::ExponentialMovingAverage<std::int32_t> low_pass{0.1};
-zest::Hysteresis<std::int32_t> low_battery{3400, 3500};
-zest::RateLimiter limiter{1s};
-zest::Debouncer<bool> debouncer{30ms};
-```
+`push_overwrite()` and `clear()` touch both ends, so they require the two sides to
+be the same context or externally synchronised. `try_push()`, `try_pop()`,
+`peek()` and `drain()` respect the single-producer, single-consumer split.
 
-The implemented set includes:
+## 10. Kernel facilities
 
-- `MovingAverage<T, N>`
-- `MedianFilter<T, N>`
-- `ExponentialMovingAverage<T>`
-- `Hysteresis<T>`
-- `Calibration<T>` for gain and offset
-- `LinearMap` for converting numeric ranges
-- `ThresholdDetector`
-- `RateLimiter`
-- `Debouncer<T>`
+The kernel surface stays small, but three gaps forced application code back to
+the C API and are now covered: `DelayableWorkItem` for the retry, timeout and
+debounce shape; `WorkQueue<StackSize>` so slow work stays off the system queue;
+and `Mutex` with `ScopedLock`, which releases on the early-return paths where a
+hand-written unlock gets forgotten.
 
-The numerical helpers have no Zephyr dependency. Timing helpers use standard
-chrono clocks and remain independent of Zephyr scheduling APIs.
+`detail::timeout()` converts durations through microseconds and rounds up, so a
+requested wait is never shorter than asked. Truncating to milliseconds turned
+`put(value, 500us)` into a non-blocking call reporting a failure the caller could
+not distinguish from a full queue.
 
-## 5. Typed sensor access
+`StaticThread` and `WorkQueue` accept a name, which is what makes a fault dump or
+the thread analyser readable.
 
-Zest does not introduce an abstract virtual `Sensor` base class. Concrete
-readers and compile-time composition are preferred:
+**Storage duration.** `StaticThread` and `WorkQueue` embed Zephyr stack macros
+whose architecture-specific alignment only holds for objects with static storage
+duration. Declare them at file or class scope, never on another thread's stack.
+A `static_assert` cannot detect this, so it is a contract.
 
-```cpp
-struct Temperature {
-    std::int32_t milli_celsius;
-};
+## 11. Watchdog
 
-zest::SensorChannel<Temperature> temperature{
-    device,
-    SENSOR_CHAN_AMBIENT_TEMP,
-};
+Zephyr's watchdog API is per-device for setup and per-channel for feeding:
+`wdt_install_timeout()` adds a channel, but `wdt_setup()` starts the peripheral
+and is rejected once it is running. Modelling a channel as if it owned the device
+meant a second channel's `init()` failed with an error that read like a driver
+fault.
 
-auto sample = temperature.read();
-```
+`WatchdogDevice` installs channels and is started once; `WatchdogChannel` only
+knows how to `feed()`, and reports `errors::permission_denied` if the device has
+not been started.
 
-Timestamped values can use:
+## 12. Persistence
 
-```cpp
-template<typename T>
-struct Sample {
-    T value;
-    std::chrono::milliseconds timestamp;
-};
-```
+`Settings` gives typed access to a subtree. Only `TriviallySerializable` values
+get an automatic binary codec, and that concept rejects pointers, arrays,
+references and view types.
 
-Sensor access targets Zephyr's Read-and-Decode API instead of building a large
-abstraction around the older `sensor_sample_fetch()` and
-`sensor_channel_get()` pair. The implemented sensor surface is:
+Trivial copyability alone was not enough: `std::string_view` is trivially
+copyable, so an unconstrained overload wrote a *pointer and a length* to flash for
+`set(key, std::string_view{ssid})` — a call that looks exactly like the intended
+one and reads back as a dangling view after reboot. Explicit `std::string_view`
+overloads now persist the characters.
 
-- `SensorReader`: synchronous access to one sensor or channel.
-- `SensorBatch`: several channels in one operation.
-- `AsyncSensorReader`: RTIO-backed acquisition.
-- `PeriodicSampler<T>`: owns scheduling policy rather than the sensor.
+`set()` and `get()` use `settings_save_one`/`settings_load_one`, which bypass the
+handler mechanism; `load()` calls `settings_load_subtree` so values owned by other
+subsystems become visible.
 
-The API makes RTIO explicit: concurrent, batched, or streaming I/O uses an
-application-provided context and mempool, while `SensorReader::read()` keeps a
-single operation blocking and straightforward.
+`ProvisionedWifi` carries an explicit version, so a future layout change is
+detected rather than misread. The pre-shared key is stored in plaintext, because
+Zephyr's settings backends do not encrypt.
 
-## 6. PWM and higher-level actuators
+`RetainedValue` writes payload, then checksum, then magic word, so a reset partway
+through leaves the record invalid rather than plausible. A release fence enforces
+that order — without one the compiler may sink the magic store ahead of the
+payload it guards, defeating the scheme.
 
-```cpp
-zest::PwmOutput pwm{PWM_DT_SPEC_GET(DT_ALIAS(motor))};
+## 13. Networking
 
-pwm.init();
-pwm.set_duty_cycle(0.5);
-pwm.disable();
-```
+`Poller<N>` wraps `zsock_poll`, so one blocking call covers every socket an event
+loop owns.
 
-The composed abstractions are:
+`MqttClient` exposes what a loop actually needs — `poll_fd()` and
+`keepalive_time_left()` — rather than leaving them to be dug out of the transport
+union. `publish()` draws message ids from a monotonic counter; defaulting every
+message to `1` made QoS 1 and 2 acknowledgements uncorrelatable.
 
-- `DimmableLed`
-- `RgbLed`
-- `Servo`
-- `Buzzer`
-- `LedPatternPlayer`
+`WifiManager` covers `open`, WPA2-PSK, PSK-SHA256, WPA3-SAE and enterprise
+security, plus band and BSSID pinning, `scan()` for provisioning UIs, and
+state-change callbacks so applications can react rather than poll.
+`ConnectionInfo` is sized for IPv6 and exposes `string_view` accessors.
 
-`LedPatternPlayer` provides reusable connecting, connected, warning, and
-failure patterns for Wi-Fi and Bluetooth applications.
+`HttpClient` can keep a connection open for a following request to the same
+origin. A device posting telemetry on a timer otherwise pays a fresh TCP and TLS
+handshake every time, which on a battery is the dominant energy cost of reporting.
+Its stack cost is documented and Kconfig-tunable, and TLS is a separate option so
+a plain-HTTP device does not pull in mbedTLS.
 
-## 7. Persistent settings
+`StaticCredential` registers a credential that already lives in read-only memory.
+`tls_credential_add()` retains the caller's pointer rather than copying, so
+copying into RAM first spends the credential's size for no benefit — on a small
+part, a meaningful fraction of the budget. `OwnedCredential<N>` copies, for a
+credential that arrives at run time.
 
-The typed `Settings` wrapper removes callback and serialization boilerplate:
+## 14. Bluetooth
 
-```cpp
-zest::Settings settings{"app"};
+`BluetoothManager` covers both roles. Central-role `connect()` takes a BLE
+identity address; peripheral-role `start_advertising()` was previously absent,
+which left the archetypal sensor node — advertise, accept a connection, expose a
+characteristic — unable to use the class at all.
 
-settings.init();
-settings.set("wifi/ssid", std::as_bytes(std::span{ssid}));
-auto period = settings.get<std::chrono::seconds>("sample_period");
-```
+## 15. Thread safety
 
-Only trivially copyable values receive an automatic binary codec.
-Structured or versioned values require an explicit serializer. The backend,
-partition, and persistence policy remain application configuration.
+| Category | Contract |
+| --- | --- |
+| Pure value types (`Error`, `Quantity`, filters, transforms, `PidController`, `StateMachine`) | Not synchronised. One owner, or the caller synchronises. |
+| `SpscRingBuffer` | One producer, one consumer, concurrently. `push_overwrite()` and `clear()` need both sides in one context. |
+| `MessageQueue`, `Semaphore`, `Mutex` | Fully thread safe. `try_put`, `try_get` and `give` are ISR-safe. |
+| `WorkItem`, `DelayableWorkItem` | `submit()`/`schedule()` are ISR-safe. Replacing a handler must not race a pending run. |
+| Hardware handles (`AdcChannel`, `GpioOutput`, `PwmOutput`) | One owner per peripheral. |
+| `WifiManager`, `BluetoothManager` | Lifecycle operations are serialised internally. One instance per interface or stack; a second is inert and reports `errors::no_device`. |
+| `HttpClient`, `MqttClient`, sockets | One owner. Not safe to use from two threads at once. |
+| `Button`, `LedPatternPlayer` | Poll from one context. |
 
-## 8. Networking additions
+## 16. Testing
 
-The networking layer beside `WifiManager` and `HttpClient` includes:
+Two layers, deliberately separated:
 
-- `DnsResolver`
-- `SntpClient` or `TimeSynchronizer`
-- `MqttClient`
-- `UdpSocket` and `TcpSocket`
-- `NetworkMonitor`
-- `ProvisioningManager`
-- `CertificateStore`
-- `RetryPolicy` and `ExponentialBackoff`
+- **`tests/host`** builds the Zephyr-independent headers with a plain host
+  compiler under `-Werror`. It runs in seconds without a west workspace, which is
+  what makes the numeric layers practical to iterate on. Ten suites.
+- **`tests/smoke`** is a `ztest` application. Every `*.conf` is a separate
+  configuration, and CI discovers them by glob so the matrix cannot drift: ten of
+  the fourteen configurations were previously never built at all.
 
-`RetryPolicy` and `ExponentialBackoff` are reusable policies. `WifiManager`
-uses the common policy internally; other clients expose failures so an
-application can apply the same policy at the operation boundary it chooses.
+`native_sim` produces a real executable, so CI runs the suites rather than only
+building them. Building alone would not have caught a single assertion.
 
-## 9. System-management facilities
-
-The system layer includes:
-
-- `Watchdog`
-- `RebootReason`
-- `DeviceIdentity`
-- `PowerManager` or `SleepController`
-- `Rtc`
-- `PeriodicTimer`
-- `WorkItem`
-- `StaticThread`
-- `MessageQueue<T, N>`
-- `RetainedValue<T>`
-
-The kernel surface intentionally stays small. Zephyr primitives have
-static-initialization and ISR semantics that a generic RAII surface can easily
-obscure, and comprehensive standard-library-adjacent wrappers remain zpp's
-domain.
+`PowerManager` needs a board advertising `HAS_PM`, which `native_sim` does not, so
+`power.conf` is built separately on `qemu_cortex_m3` and CI asserts the option
+actually took effect. An option that silently resolves to `n` is a test that
+passes while covering nothing.
 
 ## Implementation status
 
-The roadmap is implemented. The public headers are grouped as follows:
+Everything described above is implemented. Known gaps, deliberately not yet
+covered:
 
-| Area | Public facilities |
-| --- | --- |
-| Analog and digital I/O | `AdcChannel`, `VoltageDivider`, `GpioInput`, `GpioOutput`, `Button` |
-| Signal processing | `MovingAverage`, `MedianFilter`, `ExponentialMovingAverage`, `Hysteresis`, `ThresholdDetector`, `Calibration`, `LinearMap`, `RateLimiter`, `Debouncer` |
-| Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler`, `Sample` |
-| Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
-| Persistence | `Settings`, `ProvisioningManager`, `RetainedValue` |
-| Networking | `DnsResolver`, `UdpSocket`, `TcpSocket`, `SntpClient`, `TimeSynchronizer`, `MqttClient`, `NetworkMonitor`, `CertificateStore`, `WifiManager`, `HttpClient` |
-| System | `Watchdog`, `RebootReason`, `DeviceIdentity`, `PowerManager`, `SleepController`, `Rtc`, `PeriodicTimer`, `WorkItem`, `StaticThread`, `MessageQueue` |
-
-All hardware-facing components retain native Zephyr interoperability, and all
-fixed-capacity templates make their storage cost visible in the type.
+- No typed `I2cDevice`, `SpiDevice` or `Uart` handles. A project always has one
+  sensor without a Zephyr driver, and today that means calling
+  `i2c_write_read_dt()` directly.
+- No flash-backed record store over `stream_flash` or ZMS, and no CBOR writer, so
+  offline logging and compact telemetry payloads remain application code.
+- No GATT service or characteristic helper beyond advertising.
+- `HttpClient` exposes no response headers and does not follow redirects; Zephyr's
+  client offers no user-data slot on its header callback in this version, so the
+  `HeaderHandler` overload is accepted for API stability and currently ignored.

@@ -154,17 +154,17 @@ class HttpClient
 	HttpClient(const HttpClient &) = delete;
 	HttpClient &operator=(const HttpClient &) = delete;
 
-	[[nodiscard]] HttpResult<HttpResponse> request(const HttpRequest &request,
-						       std::span<std::byte> response_buffer) noexcept;
+	[[nodiscard]] HttpResult<HttpResponse>
+	request(const HttpRequest &request, std::span<std::byte> response_buffer) noexcept;
 
 	/** Issue a request and receive each response header as it is parsed. */
 	[[nodiscard]] HttpResult<HttpResponse> request(const HttpRequest &request,
 						       std::span<std::byte> response_buffer,
 						       HeaderHandler on_header) noexcept;
 
-	[[nodiscard]] HttpResult<HttpResponse> get(std::string_view url,
-						   std::span<std::byte> response_buffer,
-						   std::span<const HttpHeader> headers = {}) noexcept;
+	[[nodiscard]] HttpResult<HttpResponse>
+	get(std::string_view url, std::span<std::byte> response_buffer,
+	    std::span<const HttpHeader> headers = {}) noexcept;
 
 	[[nodiscard]] HttpResult<HttpResponse>
 	post(std::string_view url, std::span<const std::byte> body,

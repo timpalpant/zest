@@ -25,10 +25,13 @@ namespace zest
 namespace detail
 {
 
-template <typename T> struct is_view : std::false_type {};
+template <typename T> struct is_view: std::false_type {
+};
 template <typename C, typename Traits>
-struct is_view<std::basic_string_view<C, Traits>> : std::true_type {};
-template <typename T, std::size_t N> struct is_view<std::span<T, N>> : std::true_type {};
+struct is_view<std::basic_string_view<C, Traits>>: std::true_type {
+};
+template <typename T, std::size_t N> struct is_view<std::span<T, N>>: std::true_type {
+};
 
 } /* namespace detail */
 
@@ -146,8 +149,8 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 	}
 
 	/** Read text into @p destination and return a view of what was read. */
-	[[nodiscard]] Result<std::string_view> get_string(std::string_view key,
-							  std::span<char> destination) const noexcept
+	[[nodiscard]] Result<std::string_view>
+	get_string(std::string_view key, std::span<char> destination) const noexcept
 	{
 		ZEST_TRY_ASSIGN(size, get(key, std::as_writable_bytes(destination)));
 		return std::string_view{destination.data(), size};

@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/timing.hpp>
 
 #include <chrono>

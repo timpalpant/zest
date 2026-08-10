@@ -1,3 +1,7 @@
+# Copyright (c) 2026 Timothy Palpant
+#
+# SPDX-License-Identifier: LGPL-3.0-or-later
+
 name: CI
 
 on:
@@ -11,8 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  smoke:
-    name: Zephyr smoke build
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install a C++23 toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++-14
+
+      # The numeric, timing, control and error layers have no Zephyr dependency,
+      # so they are tested here in seconds rather than only inside a firmware
+      # build. This job is the fast feedback loop.
+      - name: Configure and run
+        env:
+          CXX: g++-14
+        run: |
+          cmake -S tests/host -B build/host -G Ninja
+          cmake --build build/host
+          ctest --test-dir build/host --output-on-failure
+
+  zephyr-tests:
+    name: Zephyr tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,7 +49,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             cmake ninja-build gperf ccache device-tree-compiler \
             python3-dev python3-pip python3-setuptools python3-wheel xz-utils
-          python3 -m pip install --user west
+          python3 -m pip install --break-system-packages --user west
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Create a minimal Zephyr workspace
@@ -31,24 +57,109 @@ jobs:
           west init -m https://github.com/zephyrproject-rtos/zephyr \
             --mr v4.4.2 zephyr-workspace
           cd zephyr-workspace
+          # Trim the module set to what native_sim needs. nrf_hw_models depends
+          # on hal_nordic, which the filter removes, so drop it too.
+          west config manifest.group-filter -- -hal,-debug,-tools,-bootloader,-babblesim
           west update --narrow -o=--depth=1
+          rm -rf modules/bsim_hw_models
           west zephyr-export
-          python3 -m pip install --user -r zephyr/scripts/requirements-base.txt
+          python3 -m pip install --break-system-packages --user \
+            -r zephyr/scripts/requirements-base.txt
 
-      - name: Build every component
+      # Every *.conf in tests/smoke is discovered, so the matrix cannot drift out
+      # of date the way a hardcoded component list did: ten of the fourteen
+      # configurations were previously never built at all.
+      - name: Build and run every configuration
         env:
           ZEPHYR_TOOLCHAIN_VARIANT: host
+        working-directory: zephyr-workspace
         run: |
-          cd zephyr-workspace
-          for component in battery http wifi bluetooth; do
-            extra_conf=""
-            if [ "$component" != battery ]; then
-              extra_conf="-DEXTRA_CONF_FILE=$GITHUB_WORKSPACE/tests/smoke/$component.conf"
+          set -u
+          smoke="$GITHUB_WORKSPACE/tests/smoke"
+          failed=""
+          passed=0
+
+          run_config() {
+            local name="$1" extra="$2"
+            echo "::group::$name"
+            if ! west build -p -d "$GITHUB_WORKSPACE/build/$name" \
+                   -b native_sim/native/64 "$smoke" -- \
+                   -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE" $extra; then
+              echo "::error::$name failed to build"
+              failed="$failed $name"
+              echo "::endgroup::"
+              return
             fi
-            west build -d "$GITHUB_WORKSPACE/build/$component" \
-              -b native_sim/native/64 "$GITHUB_WORKSPACE/tests/smoke" -- \
-              -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE" $extra_conf
+            # native_sim produces a real executable, so the ztest suite actually
+            # runs. Building alone would not have caught a single assertion.
+            if ! timeout 120 "$GITHUB_WORKSPACE/build/$name/zephyr/zephyr.exe"; then
+              echo "::error::$name failed its tests"
+              failed="$failed $name"
+              echo "::endgroup::"
+              return
+            fi
+            passed=$((passed + 1))
+            echo "::endgroup::"
+          }
+
+          # The base configuration is prj.conf on its own.
+          run_config base ""
+
+          for conf in "$smoke"/*.conf; do
+            name="$(basename "$conf" .conf)"
+            case "$name" in
+              prj) continue ;;
+              # PowerManager needs a board advertising HAS_PM; see pm-board.
+              power) continue ;;
+            esac
+            run_config "$name" "-DEXTRA_CONF_FILE=$conf"
           done
+
+          echo "$passed configurations passed"
+          if [ -n "$failed" ]; then
+            echo "failed:$failed"
+            exit 1
+          fi
+
+  pm-board:
+    name: PowerManager on a PM-capable board
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build gperf ccache device-tree-compiler \
+            python3-dev python3-pip python3-setuptools python3-wheel xz-utils
+          python3 -m pip install --break-system-packages --user west
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Create a Zephyr workspace with the Arm SDK
+        run: |
+          west init -m https://github.com/zephyrproject-rtos/zephyr \
+            --mr v4.4.2 zephyr-workspace
+          cd zephyr-workspace
+          west config manifest.group-filter -- -debug,-tools,-bootloader,-babblesim
+          west update --narrow -o=--depth=1
+          west zephyr-export
+          python3 -m pip install --break-system-packages --user \
+            -r zephyr/scripts/requirements-base.txt
+          west sdk install --toolchains arm-zephyr-eabi
+
+      # CONFIG_PM depends on HAS_PM, which native_sim does not provide, so this
+      # configuration silently resolved ZEST_POWER_MANAGER to n everywhere else
+      # and tested nothing.
+      - name: Build the PowerManager configuration
+        working-directory: zephyr-workspace
+        run: |
+          west build -p -d "$GITHUB_WORKSPACE/build/power" \
+            -b qemu_cortex_m3 "$GITHUB_WORKSPACE/tests/smoke" -- \
+            -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE" \
+            -DEXTRA_CONF_FILE="$GITHUB_WORKSPACE/tests/smoke/power.conf"
+          # Fail loudly if the option did not actually take effect.
+          grep -q '^CONFIG_ZEST_POWER_MANAGER=y$' "$GITHUB_WORKSPACE/build/power/zephyr/.config"
 
   docs:
     name: Documentation
@@ -74,3 +185,22 @@ jobs:
           .format-venv/bin/pip install clang-format==22.1.8
           find include src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
             | xargs -0 .format-venv/bin/clang-format --dry-run --Werror
+
+  licence:
+    name: Licence headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # A file without an SPDX tag has unclear provenance, which for an LGPL
+      # library is the one thing a consumer must be able to determine.
+      - name: Every source file carries an SPDX tag
+        run: |
+          missing=$(find include src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) \
+            -exec grep -L 'SPDX-License-Identifier' {} +)
+          if [ -n "$missing" ]; then
+            echo "::error::missing SPDX headers:"
+            echo "$missing"
+            exit 1
+          fi
+          test -f COPYING
+          test -f COPYING.LESSER

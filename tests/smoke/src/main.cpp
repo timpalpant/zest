@@ -318,8 +318,7 @@ ZTEST(zest_smoke, test_filters_and_control_compile_and_run)
 	zassert_within(pid.update(50.0F, 0.0F, 10ms), 10.0F, 0.01F);
 	zassert_true(pid.saturated());
 
-	zest::StateMachine machine{
-		0, std::array{zest::Transition<int, int>{0, 1, 2}}};
+	zest::StateMachine machine{0, std::array{zest::Transition<int, int>{0, 1, 2}}};
 	zassert_equal(machine.dispatch(1).value(), 2);
 	zassert_false(machine.dispatch(1).has_value());
 }
@@ -353,8 +352,9 @@ ZTEST(zest_smoke, test_function_ref_accepts_captures)
 	zest::FunctionRef<int(int) noexcept> reference{add};
 	zassert_equal(reference(1), 6);
 
-	zest::InplaceFunction<int(int) noexcept> stored =
-		[offset](int value) noexcept { return value * offset; };
+	zest::InplaceFunction<int(int) noexcept> stored = [offset](int value) noexcept {
+		return value * offset;
+	};
 	zassert_equal(stored(3), 15);
 }
 
@@ -365,7 +365,8 @@ ZTEST(zest_smoke, test_adc_surface_compiles)
 {
 	static_assert(std::is_nothrow_constructible_v<zest::AdcChannel, adc_dt_spec>);
 	static_assert(noexcept(std::declval<const zest::AdcChannel &>().read_millivolts()));
-	static_assert(noexcept(std::declval<const zest::AdcChannel &>().read_average_millivolts(16)));
+	static_assert(
+		noexcept(std::declval<const zest::AdcChannel &>().read_average_millivolts(16)));
 
 	constexpr auto curve = zest::battery_curve(std::array{
 		zest::CurvePoint{4200, 100},
@@ -413,8 +414,8 @@ ZTEST(zest_smoke, test_pwm_duty_is_integer)
 #if defined(CONFIG_ZEST_BUTTON)
 ZTEST(zest_smoke, test_button_surface_compiles)
 {
-	static_assert(std::is_nothrow_constructible_v<zest::Button<>, gpio_dt_spec,
-						      zest::ButtonConfig>);
+	static_assert(
+		std::is_nothrow_constructible_v<zest::Button<>, gpio_dt_spec, zest::ButtonConfig>);
 	zassert_true(zest::has_event(zest::ButtonEvent::pressed | zest::ButtonEvent::clicked,
 				     zest::ButtonEvent::clicked));
 	zassert_false(zest::has_event(zest::ButtonEvent::pressed, zest::ButtonEvent::clicked));
@@ -485,15 +486,15 @@ ZTEST(zest_smoke, test_credential_surfaces_compile)
 #if defined(CONFIG_ZEST_PROVISIONING_MANAGER)
 ZTEST(zest_smoke, test_provisioning_validates_input)
 {
-	static_assert(std::is_nothrow_constructible_v<zest::ProvisioningManager<>,
-						      std::string_view>);
+	static_assert(
+		std::is_nothrow_constructible_v<zest::ProvisioningManager<>, std::string_view>);
 	zest::ProvisioningManager manager{"zest_smoke"};
 
 	std::array<char, 40> too_long{};
 	too_long.fill('s');
-	zassert_equal(manager.provision(std::string_view{too_long.data(), too_long.size()}, "pw")
-			      .error(),
-		      zest::errors::invalid_argument);
+	zassert_equal(
+		manager.provision(std::string_view{too_long.data(), too_long.size()}, "pw").error(),
+		zest::errors::invalid_argument);
 	zassert_equal(manager.provision("", "pw").error(), zest::errors::invalid_argument);
 }
 #endif

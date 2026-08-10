@@ -6,7 +6,6 @@
 
 #include "check.hpp"
 
-
 #include <zest/ring_buffer.hpp>
 
 #include <array>

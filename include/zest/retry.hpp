@@ -86,7 +86,8 @@ class ExponentialBackoff
 		config.initial_delay =
 			std::max(config.initial_delay, std::chrono::milliseconds::zero());
 		config.maximum_delay = std::max(config.maximum_delay, config.initial_delay);
-		config.multiplier_percent = std::max<std::uint16_t>(config.multiplier_percent, 100U);
+		config.multiplier_percent =
+			std::max<std::uint16_t>(config.multiplier_percent, 100U);
 		config.jitter_percent = std::min<std::uint16_t>(config.jitter_percent, 100U);
 		return config;
 	}
@@ -107,8 +108,8 @@ class ExponentialBackoff
 		if (window <= 0) {
 			return delay;
 		}
-		const auto reduction = static_cast<std::int64_t>(state_ % static_cast<std::uint32_t>(
-			window + 1));
+		const auto reduction =
+			static_cast<std::int64_t>(state_ % static_cast<std::uint32_t>(window + 1));
 		return std::chrono::milliseconds{delay.count() - reduction};
 	}
 

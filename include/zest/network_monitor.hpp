@@ -50,10 +50,12 @@ class NetworkMonitor
 	 * computed an absolute deadline that overflowed for that sentinel, which is
 	 * the natural way to spell "wait forever".
 	 */
-	[[nodiscard]] Result<NetworkState> wait_for_ipv4(std::chrono::milliseconds timeout) noexcept;
+	[[nodiscard]] Result<NetworkState>
+	wait_for_ipv4(std::chrono::milliseconds timeout) noexcept;
 
 	/** Wait for the interface to be usable on any address family. */
-	[[nodiscard]] Result<NetworkState> wait_for_ready(std::chrono::milliseconds timeout) noexcept;
+	[[nodiscard]] Result<NetworkState>
+	wait_for_ready(std::chrono::milliseconds timeout) noexcept;
 
 	[[nodiscard]] net_if *interface() const noexcept
 	{

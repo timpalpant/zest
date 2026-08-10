@@ -199,8 +199,8 @@ inline constexpr Error not_permitted{-EPERM};
  */
 #define ZEST_TRY(expr)                                                                             \
 	do {                                                                                       \
-		if (auto _zest_result = (expr); !_zest_result) {                                    \
-			return ::zest::fail(_zest_result.error());                                  \
+		if (auto _zest_result = (expr); !_zest_result) {                                   \
+			return ::zest::fail(_zest_result.error());                                 \
 		}                                                                                  \
 	} while (false)
 
