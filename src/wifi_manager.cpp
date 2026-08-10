@@ -1,4 +1,5 @@
 #include <zest/wifi_manager.hpp>
+#include <zest/retry.hpp>
 
 #include <algorithm>
 #include <cerrno>
@@ -9,14 +10,6 @@
 
 namespace zest
 {
-
-namespace
-{
-
-constexpr auto initial_retry_delay = std::chrono::milliseconds{1000};
-constexpr auto maximum_retry_delay = std::chrono::milliseconds{5000};
-
-} // namespace
 
 WifiManager *WifiManager::instance_ = nullptr;
 
@@ -124,7 +117,12 @@ WifiManager::connect(const Credentials &credentials, std::chrono::milliseconds t
 	params.psk_length = static_cast<std::uint8_t>(credentials.password.size());
 
 	const std::int64_t deadline = k_uptime_get() + timeout.count();
-	auto retry_delay = initial_retry_delay;
+	RetryPolicy retry{{
+		.maximum_attempts = 0U,
+		.initial_delay = std::chrono::seconds{1},
+		.maximum_delay = std::chrono::seconds{5},
+		.multiplier = 2.0,
+	}};
 
 	for (;;) {
 		const std::int64_t remaining = deadline - k_uptime_get();
@@ -167,9 +165,9 @@ WifiManager::connect(const Credentials &credentials, std::chrono::milliseconds t
 			return std::unexpected(-ETIMEDOUT);
 		}
 
-		const auto delay = std::min(retry_delay, std::chrono::milliseconds{before_retry});
+		const auto retry_delay = retry.failure();
+		const auto delay = std::min(*retry_delay, std::chrono::milliseconds{before_retry});
 		k_sleep(K_MSEC(delay.count()));
-		retry_delay = std::min(retry_delay * 2, maximum_retry_delay);
 	}
 }
 

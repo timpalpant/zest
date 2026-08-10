@@ -5,15 +5,22 @@ Zest is an allocation-conscious C++23 service library for
 in small, synchronous APIs built around `std::expected`, `std::span`, and
 `std::chrono`.
 
-- `zest::BatteryMonitor` samples a voltage-divider-backed battery;
+- `zest::BatteryMonitor` and `zest::VoltageDivider` sample divided voltages;
   `zest::estimate_charge_percent()` independently maps voltage through an
   application-supplied discharge curve.
+- `zest::AdcChannel` provides raw, millivolt, and compile-time averaged ADC
+  conversions.
+- `zest::GpioInput` and `zest::GpioOutput` expose logical active/inactive GPIO
+  operations that respect devicetree flags.
 - `zest::WifiManager` connects, retries transient association failures, waits
   for DHCP, reports status, and controls power saving.
 - `zest::HttpClient` provides session-style HTTP/1.1 defaults, HTTPS/SNI, and
   caller-owned response storage.
 - `zest::BluetoothManager` manages Zephyr BLE lifecycle and central-role
   connections.
+- Fixed-storage sensor, PWM/actuator, settings, MQTT, DNS, socket, SNTP,
+  provisioning, TLS credential, kernel, retained-state, and system-management
+  helpers are independently selectable.
 
 [API reference](https://timpalpant.github.io/zest/api/) ·
 [project website](https://timpalpant.github.io/zest/) ·
@@ -58,22 +65,55 @@ Enable the library and only the services the image uses:
 
 ```conf
 CONFIG_ZEST=y
+CONFIG_ZEST_ADC_CHANNEL=y
+CONFIG_ZEST_GPIO=y
 CONFIG_ZEST_BATTERY_MONITOR=y
 CONFIG_ZEST_WIFI_MANAGER=y
 CONFIG_ZEST_HTTP_CLIENT=y
 CONFIG_ZEST_BLUETOOTH_MANAGER=y
+CONFIG_ZEST_SENSOR=y
+CONFIG_ZEST_SETTINGS=y
+CONFIG_ZEST_NETWORK=y
+CONFIG_ZEST_MQTT_CLIENT=y
+CONFIG_ZEST_DEVICE_IDENTITY=y
+CONFIG_ZEST_WATCHDOG=y
+CONFIG_ZEST_RTC=y
+CONFIG_ZEST_POWER_MANAGER=y
 ```
 
 The corresponding Zephyr facilities remain application policy:
 
-- `BatteryMonitor` requires ADC.
+- `AdcChannel` and `BatteryMonitor` require ADC; `BatteryMonitor` selects
+  `AdcChannel` automatically.
+- `GpioInput` and `GpioOutput` require GPIO.
 - `WifiManager` requires networking, IPv4, and Wi-Fi.
 - `HttpClient` requires sockets, TCP, DNS, Zephyr's HTTP client, and TLS
   sockets.
 - `BluetoothManager` selects the Zephyr BLE host, central role, and dynamic
   device names. The board must still provide a Bluetooth controller.
+- Header-only behavior and kernel helpers require only `CONFIG_ZEST=y` and
+  their underlying Zephyr facilities. Every compiled service has a separate
+  Kconfig option; see the generated API reference for exact dependencies.
 
 ## Examples
+
+### ADC and GPIO
+
+```cpp
+#include <zest/adc_channel.hpp>
+#include <zest/gpio.hpp>
+
+zest::AdcChannel analog{ADC_DT_SPEC_GET(DT_ALIAS(sensor))};
+zest::GpioOutput led{GPIO_DT_SPEC_GET(DT_ALIAS(status_led), gpios)};
+
+if (analog.init() && led.init()) {
+    if (auto millivolts = analog.read_average_millivolts<16>()) {
+        led.set(*millivolts > 1000
+                    ? zest::GpioState::active
+                    : zest::GpioState::inactive);
+    }
+}
+```
 
 ### Battery
 
@@ -140,9 +180,10 @@ zest::HttpClient client{zest::HttpClient::Options{
 auto response = client.get("https://example.com/", body);
 ```
 
-Register each CA with `tls_credential_add()` before the request. PEM lengths
-include the trailing NUL; DER lengths do not. Required certificate validation
-also needs a valid system clock.
+`CertificateStore<N>` can own and register each CA for the lifetime of a
+client. PEM lengths include the trailing NUL; DER lengths do not. Required
+certificate validation also needs a valid system clock, which can be set with
+`TimeSynchronizer`.
 
 ### Bluetooth LE
 
@@ -168,6 +209,9 @@ negative errno values through `std::expected`.
 Platform configuration remains outside the library. Network pools, TLS
 algorithms and credentials, DHCP policy, Wi-Fi drivers, Bluetooth controllers,
 and devicetree wiring belong to the application and board.
+
+See [DESIGN.md](DESIGN.md) for the architectural layers, relationship with
+zpp, and complete component inventory.
 
 ## Documentation
 

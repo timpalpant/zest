@@ -74,7 +74,7 @@ WARN_IF_DOC_ERROR      = YES
 WARN_IF_INCOMPLETE_DOC = YES
 WARN_NO_PARAMDOC       = NO
 WARN_AS_ERROR          = FAIL_ON_WARNINGS
-INPUT                  = include README.md
+INPUT                  = include README.md DESIGN.md
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.hpp *.md *.dox
 RECURSIVE              = YES
@@ -134,7 +134,14 @@ EXPAND_ONLY_PREDEF     = NO
 SEARCH_INCLUDES        = YES
 INCLUDE_PATH           =
 INCLUDE_FILE_PATTERNS  =
-PREDEFINED             = CONFIG_ZEST_BLUETOOTH_MANAGER=1
+PREDEFINED             = CONFIG_ZEST_BLUETOOTH_MANAGER=1 \
+                         CONFIG_ZEST_MQTT_CLIENT=1 \
+                         CONFIG_MQTT_LIB_TLS=1 \
+                         CONFIG_NET_IPV6=1 \
+                         CONFIG_ZEST_DEVICE_IDENTITY=1 \
+                         CONFIG_ZEST_WATCHDOG=1 \
+                         CONFIG_ZEST_RTC=1 \
+                         CONFIG_ZEST_POWER_MANAGER=1
 EXPAND_AS_DEFINED      =
 SKIP_FUNCTION_MACROS   = YES
 TAGFILES               =

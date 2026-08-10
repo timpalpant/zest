@@ -7,9 +7,127 @@ menuconfig ZEST
 
 if ZEST
 
+config ZEST_ADC_CHANNEL
+	bool "AdcChannel"
+	depends on ADC
+	help
+	  Typed, devicetree-configured ADC reads with raw, millivolt, and averaged
+	  results.
+
+config ZEST_GPIO
+	bool "GpioInput and GpioOutput"
+	depends on GPIO
+	help
+	  Typed digital input and output handles using logical active/inactive
+	  states.
+
+config ZEST_BUTTON
+	bool "Button"
+	depends on GPIO
+	select ZEST_GPIO
+	help
+	  Poll-driven debounced button with click and long-press events.
+
+config ZEST_LED_PATTERN
+	bool "LedPatternPlayer"
+	depends on GPIO
+	select ZEST_GPIO
+	help
+	  Fixed-storage, poll-driven GPIO status patterns.
+
+config ZEST_PWM_OUTPUT
+	bool "PWM outputs and actuators"
+	depends on PWM
+	help
+	  Typed PWM output, dimmable and RGB LEDs, servo, and buzzer helpers.
+
+config ZEST_SENSOR
+	bool "Read-and-Decode sensor access"
+	depends on SENSOR_ASYNC_API
+	help
+	  Typed blocking, batched, and RTIO mempool-backed sensor reads with
+	  fixed-storage channel and periodic sampling helpers.
+
+config ZEST_SETTINGS
+	bool "Settings"
+	depends on SETTINGS
+	help
+	  Fixed-storage byte and trivially-copyable typed access to a Zephyr
+	  settings subtree. Storage backend selection remains application policy.
+
+config ZEST_NETWORK
+	bool "DNS and socket wrappers"
+	depends on NETWORKING && NET_SOCKETS && DNS_RESOLVER
+	help
+	  Fixed-result DNS resolution and move-only TCP and UDP sockets.
+
+config ZEST_SNTP_CLIENT
+	bool "SNTP client"
+	depends on NETWORKING && NET_SOCKETS && SNTP
+	help
+	  Query network time without changing the system clock.
+
+config ZEST_TIME_SYNCHRONIZER
+	bool "Network time synchronization"
+	depends on NETWORKING && NET_SOCKETS && SNTP && POSIX_TIMERS
+	select ZEST_SNTP_CLIENT
+	help
+	  Query network time and update CLOCK_REALTIME.
+
+config ZEST_NETWORK_MONITOR
+	bool "Network interface monitor"
+	depends on NETWORKING && NET_MGMT && NET_IPV4
+	help
+	  Observe interface and IP-address readiness and wait for IPv4. IPv6 is
+	  reported when CONFIG_NET_IPV6 is enabled by the application.
+
+config ZEST_MQTT_CLIENT
+	bool "MQTT client"
+	depends on MQTT_LIB && NETWORKING && NET_SOCKETS && DNS_RESOLVER
+	select ZEST_NETWORK
+	help
+	  Fixed-buffer MQTT client with explicit event-loop integration.
+
+config ZEST_CERTIFICATE_STORE
+	bool "TLS certificate store"
+	depends on TLS_CREDENTIALS
+	help
+	  Fixed-storage ownership for credentials registered with Zephyr TLS.
+
+config ZEST_PROVISIONING_MANAGER
+	bool "Wi-Fi provisioning manager"
+	depends on SETTINGS
+	select ZEST_SETTINGS
+	help
+	  Persistent, bounded Wi-Fi credential storage.
+
+config ZEST_SYSTEM
+	bool
+
+config ZEST_DEVICE_IDENTITY
+	bool "Reset reason and device identity"
+	depends on HWINFO
+	select ZEST_SYSTEM
+
+config ZEST_WATCHDOG
+	bool "Watchdog"
+	depends on WATCHDOG
+	select ZEST_SYSTEM
+
+config ZEST_RTC
+	bool "Real-time clock"
+	depends on RTC
+	select ZEST_SYSTEM
+
+config ZEST_POWER_MANAGER
+	bool "Power manager"
+	depends on PM
+	select ZEST_SYSTEM
+
 config ZEST_BATTERY_MONITOR
 	bool "BatteryMonitor"
 	depends on ADC
+	select ZEST_ADC_CHANNEL
 	help
 	  ADC-backed battery voltage monitor with a separate discharge-curve
 	  helper.

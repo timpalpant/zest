@@ -1,6 +1,33 @@
 zephyr_library()
 zephyr_include_directories(include)
 
+zephyr_library_sources_ifdef(CONFIG_ZEST_ADC_CHANNEL
+  src/adc_channel.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_GPIO
+  src/gpio.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_PWM_OUTPUT
+  src/pwm.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_SENSOR
+  src/sensor.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_NETWORK
+  src/network.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_SNTP_CLIENT
+  src/sntp_client.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_TIME_SYNCHRONIZER
+  src/time_synchronizer.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_NETWORK_MONITOR
+  src/network_monitor.cpp
+)
+zephyr_library_sources_ifdef(CONFIG_ZEST_SYSTEM
+  src/system.cpp
+)
 zephyr_library_sources_ifdef(CONFIG_ZEST_BATTERY_MONITOR
   src/battery_monitor.cpp
 )

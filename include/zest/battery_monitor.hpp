@@ -1,6 +1,6 @@
 #pragma once
 
-#include <zephyr/drivers/adc.h>
+#include <zest/voltage_divider.hpp>
 
 #include <cstdint>
 #include <expected>
@@ -25,7 +25,7 @@ class BatteryMonitor
       public:
 	constexpr BatteryMonitor(adc_dt_spec channel, std::int32_t output_ohms,
 				 std::int32_t full_ohms) noexcept
-		: channel_{channel}, output_ohms_{output_ohms}, full_ohms_{full_ohms}
+		: divider_{channel, output_ohms, full_ohms}
 	{
 	}
 
@@ -43,11 +43,7 @@ class BatteryMonitor
 	/* Number of ADC conversions averaged into one reading. */
 	static constexpr int kOversample = 16;
 
-	[[nodiscard]] std::expected<std::int32_t, Error> sample_mv() const noexcept;
-
-	adc_dt_spec channel_;
-	std::int32_t output_ohms_;
-	std::int32_t full_ohms_;
+	VoltageDivider divider_;
 };
 
 } /* namespace zest */
