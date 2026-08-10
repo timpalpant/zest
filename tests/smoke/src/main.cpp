@@ -53,6 +53,15 @@
 #if defined(CONFIG_ZEST_SENSOR)
 #include <zest/sensor.hpp>
 #endif
+#if defined(CONFIG_ZEST_I2C)
+#include <zest/i2c.hpp>
+#endif
+#if defined(CONFIG_ZEST_SPI)
+#include <zest/spi.hpp>
+#endif
+#if defined(CONFIG_ZEST_UART)
+#include <zest/uart.hpp>
+#endif
 #if defined(CONFIG_ZEST_SETTINGS)
 #include <zest/settings.hpp>
 #endif
@@ -647,5 +656,48 @@ ZTEST(zest_smoke, test_device_identity_reports_real_length)
 	}
 	/* An empty destination is rejected. */
 	zassert_equal(zest::DeviceIdentity::read({}).error(), zest::errors::invalid_argument);
+}
+#endif
+
+#if defined(CONFIG_ZEST_I2C)
+ZTEST(zest_smoke, test_i2c_surface)
+{
+	static_assert(std::is_nothrow_constructible_v<zest::I2cDevice, i2c_dt_spec>);
+
+	/* An unbound spec must report no device rather than dereferencing null. */
+	constexpr zest::I2cDevice sensor{i2c_dt_spec{}};
+	zassert_equal(sensor.init().error(), zest::errors::no_device);
+	/* Empty transfers are rejected before reaching the driver. */
+	zassert_equal(sensor.write({}).error(), zest::errors::invalid_argument);
+	zassert_equal(sensor.read({}).error(), zest::errors::invalid_argument);
+	zassert_equal(sensor.read_registers(0x00, {}).error(), zest::errors::invalid_argument);
+}
+#endif
+
+#if defined(CONFIG_ZEST_SPI)
+ZTEST(zest_smoke, test_spi_surface)
+{
+	static_assert(std::is_nothrow_constructible_v<zest::SpiDevice, spi_dt_spec>);
+
+	constexpr zest::SpiDevice imu{spi_dt_spec{}};
+	zassert_equal(imu.init().error(), zest::errors::no_device);
+	zassert_equal(imu.write({}).error(), zest::errors::invalid_argument);
+	zassert_equal(imu.transceive({}, {}).error(), zest::errors::invalid_argument);
+	zassert_equal(imu.write_then_read({}, {}).error(), zest::errors::invalid_argument);
+}
+#endif
+
+#if defined(CONFIG_ZEST_UART)
+ZTEST(zest_smoke, test_uart_surface)
+{
+	static_assert(std::is_nothrow_constructible_v<zest::Uart, const struct device *>);
+
+	constexpr zest::Uart port{nullptr};
+	zassert_equal(port.init().error(), zest::errors::no_device);
+	zassert_equal(port.write(std::string_view{"hi"}).error(), zest::errors::no_device);
+	/* A bounded read must report rather than spin forever. */
+	std::array<std::byte, 4> buffer{};
+	zassert_equal(port.read(buffer, 1ms).error(), zest::errors::no_device);
+	port.flush_input();
 }
 #endif

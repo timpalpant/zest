@@ -49,6 +49,25 @@ config ZEST_PWM_OUTPUT
 	help
 	  Typed PWM output, dimmable and RGB LEDs, servo, and buzzer helpers.
 
+config ZEST_I2C
+	bool "I2cDevice"
+	depends on I2C
+	help
+	  Typed I2C register and burst access, for a part with no Zephyr driver.
+
+config ZEST_SPI
+	bool "SpiDevice"
+	depends on SPI
+	help
+	  Typed SPI transfers, for a part with no Zephyr driver.
+
+config ZEST_UART
+	bool "Uart"
+	depends on SERIAL
+	help
+	  Polled UART access with bounded waits, for a module that speaks ASCII or a
+	  simple framed protocol.
+
 config ZEST_SENSOR
 	bool "Read-and-Decode sensor access"
 	depends on SENSOR && SENSOR_ASYNC_API && RTIO

@@ -341,14 +341,24 @@ building them. Building alone would not have caught a single assertion.
 actually took effect. An option that silently resolves to `n` is a test that
 passes while covering nothing.
 
+## 17. Buses
+
+`I2cDevice`, `SpiDevice` and `Uart` cover the part that has no Zephyr driver,
+which every sensing project eventually has. They follow the library's conventions
+--- spans rather than pointer-and-length, `Result` rather than errno, no
+allocation --- and expose their native specs for anything they do not cover.
+
+`SpiDevice` offers transfers rather than a register protocol, because the
+read/write bit's position varies by part. `Uart` is deliberately the polling API:
+no interrupt configuration, no ring buffer sizing, nothing beyond
+`CONFIG_SERIAL`. Its reads take a timeout, so they cannot hang a thread the way a
+raw `uart_poll_in()` loop does.
+
 ## Implementation status
 
 Everything described above is implemented. Known gaps, deliberately not yet
 covered:
 
-- No typed `I2cDevice`, `SpiDevice` or `Uart` handles. A project always has one
-  sensor without a Zephyr driver, and today that means calling
-  `i2c_write_read_dt()` directly.
 - No flash-backed record store over `stream_flash` or ZMS, and no CBOR writer, so
   offline logging and compact telemetry payloads remain application code.
 - No GATT service or characteristic helper beyond advertising.

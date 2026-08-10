@@ -32,6 +32,7 @@ part has a double-precision FPU.
 | Control | `PidController`, `SlewRateLimiter`, `slew_toward`, `StateMachine` |
 | Timing and policy | `RateLimiter`, `Debouncer`, `RetryPolicy`, `ExponentialBackoff` |
 | Battery | `BatteryMonitor`, `BatteryCurve`, `battery_curve()` |
+| Buses | `I2cDevice`, `SpiDevice`, `Uart` |
 | Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler` |
 | Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
 | Buffers | `SpscRingBuffer`, `MessageQueue` |
