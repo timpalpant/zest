@@ -25,11 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Select GitHub Actions as Pages source
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method PUT "repos/${{ github.repository }}/pages" -f build_type=workflow
-
       - name: Generate website
         run: |
           sudo apt-get update
