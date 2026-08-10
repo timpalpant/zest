@@ -10,21 +10,19 @@
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <chrono>
 #include <cstdint>
-#include <expected>
 #include <limits>
 #include <string_view>
 
 namespace zest
 {
 
-std::expected<NetworkTime, int> SntpClient::query(std::string_view server,
-						  std::chrono::milliseconds timeout) const noexcept
+Result<NetworkTime> SntpClient::query(std::string_view server,
+				      std::chrono::milliseconds timeout) const noexcept
 {
 	if (server.empty() || server.size() > 253U || timeout < std::chrono::milliseconds::zero()) {
-		return std::unexpected(-EINVAL);
+		return fail(errors::invalid_argument);
 	}
 
 	std::array<char, 254> name{};
@@ -34,11 +32,8 @@ std::expected<NetworkTime, int> SntpClient::query(std::string_view server,
 					std::numeric_limits<std::uint32_t>::max());
 
 	sntp_time result{};
-	const int rc =
-		sntp_simple(name.data(), static_cast<std::uint32_t>(bounded_timeout), &result);
-	if (rc < 0) {
-		return std::unexpected(rc);
-	}
+	ZEST_TRY(check(
+		sntp_simple(name.data(), static_cast<std::uint32_t>(bounded_timeout), &result)));
 
 	constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
 	const auto fractional_nanoseconds =

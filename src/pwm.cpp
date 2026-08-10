@@ -8,120 +8,99 @@
 
 #include <zephyr/drivers/pwm.h>
 
-#include <cerrno>
 #include <chrono>
 #include <cstdint>
-#include <expected>
 #include <limits>
 
 namespace zest
 {
-namespace
-{
 
-[[nodiscard]] std::expected<void, int> as_expected(int rc) noexcept
-{
-	if (rc < 0) {
-		return std::unexpected(rc);
-	}
-	return {};
-}
-
-} /* namespace */
-
-std::expected<void, int> PwmOutput::init() const noexcept
+Result<> PwmOutput::init() const noexcept
 {
 	if (!pwm_is_ready_dt(&spec_)) {
-		return std::unexpected(-ENODEV);
+		return fail(errors::no_device);
 	}
 	return disable();
 }
 
-std::expected<void, int> PwmOutput::set_pulse(std::chrono::nanoseconds pulse) const noexcept
+Result<> PwmOutput::set_pulse(std::chrono::nanoseconds pulse) const noexcept
 {
 	return set(period(), pulse);
 }
 
-std::expected<void, int> PwmOutput::set_duty_cycle(double duty_cycle) const noexcept
+Result<> PwmOutput::set_duty(PerMille duty) const noexcept
 {
-	if (duty_cycle < 0.0 || duty_cycle > 1.0) {
-		return std::unexpected(-EINVAL);
+	if (duty > kFullScale) {
+		return fail(errors::invalid_argument);
 	}
-	const auto pulse = std::chrono::nanoseconds{static_cast<std::chrono::nanoseconds::rep>(
-		static_cast<double>(spec_.period) * duty_cycle)};
-	return set_pulse(pulse);
+	/* Integer scaling: no FPU involved. */
+	const auto pulse = static_cast<std::int64_t>(spec_.period) * duty / kFullScale;
+	return set_pulse(std::chrono::nanoseconds{pulse});
 }
 
-std::expected<void, int> PwmOutput::set(std::chrono::nanoseconds period,
-					std::chrono::nanoseconds pulse) const noexcept
+Result<> PwmOutput::set(std::chrono::nanoseconds period,
+			std::chrono::nanoseconds pulse) const noexcept
 {
 	if (period.count() <= 0 || pulse.count() < 0 || pulse > period ||
 	    period.count() > std::numeric_limits<std::uint32_t>::max() ||
 	    pulse.count() > std::numeric_limits<std::uint32_t>::max()) {
-		return std::unexpected(-EINVAL);
+		return fail(errors::invalid_argument);
 	}
-	return as_expected(pwm_set(spec_.dev, spec_.channel,
-				   static_cast<std::uint32_t>(period.count()),
-				   static_cast<std::uint32_t>(pulse.count()), spec_.flags));
+	return check(pwm_set(spec_.dev, spec_.channel, static_cast<std::uint32_t>(period.count()),
+			     static_cast<std::uint32_t>(pulse.count()), spec_.flags));
 }
 
-std::expected<void, int> PwmOutput::disable() const noexcept
+Result<> PwmOutput::disable() const noexcept
 {
-	return as_expected(pwm_set_pulse_dt(&spec_, 0U));
+	return check(pwm_set_pulse_dt(&spec_, 0U));
 }
 
-std::expected<void, int> RgbLed::init() const noexcept
+Result<> RgbLed::init() const noexcept
 {
-	if (const auto result = red_.init(); !result) {
-		return result;
-	}
-	if (const auto result = green_.init(); !result) {
-		return result;
-	}
+	ZEST_TRY(red_.init());
+	ZEST_TRY(green_.init());
 	return blue_.init();
 }
 
-std::expected<void, int> RgbLed::set(RgbColor color) const noexcept
+Result<> RgbLed::set(RgbColor color) const noexcept
 {
-	constexpr double kMaximum = 255.0;
-	if (const auto result = red_.set_duty_cycle(color.red / kMaximum); !result) {
-		return result;
-	}
-	if (const auto result = green_.set_duty_cycle(color.green / kMaximum); !result) {
-		return result;
-	}
-	return blue_.set_duty_cycle(color.blue / kMaximum);
+	/* 8-bit intensity scaled to per-mille without floating point. */
+	constexpr auto to_per_mille = [](std::uint8_t level) constexpr -> PerMille {
+		return static_cast<PerMille>((static_cast<std::uint32_t>(level) * kFullScale + 127U) /
+					     255U);
+	};
+	ZEST_TRY(red_.set_duty(to_per_mille(color.red)));
+	ZEST_TRY(green_.set_duty(to_per_mille(color.green)));
+	return blue_.set_duty(to_per_mille(color.blue));
 }
 
-std::expected<void, int> RgbLed::off() const noexcept
+Result<> RgbLed::off() const noexcept
 {
-	return set({0U, 0U, 0U});
+	return set(colors::off);
 }
 
-std::expected<void, int> Servo::set_position(double position) const noexcept
+Result<> Servo::set_position(PerMille position) const noexcept
 {
-	if (position < 0.0 || position > 1.0 || minimum_pulse_.count() < 0 ||
-	    maximum_pulse_ < minimum_pulse_) {
-		return std::unexpected(-EINVAL);
+	if (position > kFullScale || minimum_pulse_.count() < 0 || maximum_pulse_ < minimum_pulse_) {
+		return fail(errors::invalid_argument);
 	}
-	const auto range = maximum_pulse_ - minimum_pulse_;
-	const auto pulse = minimum_pulse_ +
-			   std::chrono::nanoseconds{static_cast<std::chrono::nanoseconds::rep>(
-				   static_cast<double>(range.count()) * position)};
-	return output_.set_pulse(pulse);
+	const auto span = (maximum_pulse_ - minimum_pulse_).count();
+	const auto offset = static_cast<std::int64_t>(span) * position / kFullScale;
+	return output_.set_pulse(minimum_pulse_ + std::chrono::nanoseconds{offset});
 }
 
-std::expected<void, int> Buzzer::tone(std::uint32_t frequency_hz, double volume) const noexcept
+Result<> Buzzer::tone(Hertz frequency, PerMille volume) const noexcept
 {
-	if (frequency_hz == 0U || volume < 0.0 || volume > 1.0) {
-		return std::unexpected(-EINVAL);
+	if (frequency.count() == 0U || volume > kFullScale) {
+		return fail(errors::invalid_argument);
 	}
 
-	constexpr std::uint64_t kNanosecondsPerSecond = 1'000'000'000ULL;
-	const auto period = std::chrono::nanoseconds{
-		static_cast<std::chrono::nanoseconds::rep>(kNanosecondsPerSecond / frequency_hz)};
-	const auto pulse = std::chrono::nanoseconds{static_cast<std::chrono::nanoseconds::rep>(
-		static_cast<double>(period.count()) * 0.5 * volume)};
+	constexpr std::int64_t kNanosecondsPerSecond = 1'000'000'000;
+	const auto period =
+		std::chrono::nanoseconds{kNanosecondsPerSecond / static_cast<std::int64_t>(
+							 frequency.count())};
+	/* A square wave at half duty, scaled by volume. */
+	const auto pulse = std::chrono::nanoseconds{period.count() * volume / (2 * kFullScale)};
 	return output_.set(period, pulse);
 }
 

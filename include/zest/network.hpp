@@ -6,11 +6,12 @@
 
 #pragma once
 
+#include <zest/error.hpp>
+
 #include <zephyr/net/socket.h>
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -21,6 +22,74 @@
 
 namespace zest
 {
+
+/**
+ * A name-resolution failure.
+ *
+ * DNS keeps its own type rather than folding into `Error`, because Zephyr's
+ * `enum dns_resolve_status` values collide numerically with errno: `DNS_EAI_NONAME`
+ * is `-2`, which as an errno reads as `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`,
+ * which reads as `-ENOMEM`. Returning them as a bare `int` made the two
+ * indistinguishable.
+ */
+enum class DnsError {
+	bad_flags,
+	no_name,
+	again,
+	fail,
+	no_data,
+	family,
+	socket_type,
+	service,
+	address_family,
+	memory,
+	system,
+	overflow,
+	canceled,
+	unknown,
+};
+
+/** A short, static description of a resolution failure. */
+[[nodiscard]] constexpr const char *to_string(DnsError error) noexcept
+{
+	switch (error) {
+	case DnsError::bad_flags:
+		return "invalid resolver flags";
+	case DnsError::no_name:
+		return "name not found";
+	case DnsError::again:
+		return "temporary resolver failure";
+	case DnsError::fail:
+		return "permanent resolver failure";
+	case DnsError::no_data:
+		return "name has no address";
+	case DnsError::family:
+		return "address family not supported";
+	case DnsError::socket_type:
+		return "socket type not supported";
+	case DnsError::service:
+		return "service not supported";
+	case DnsError::address_family:
+		return "no address in the requested family";
+	case DnsError::memory:
+		return "resolver out of memory";
+	case DnsError::system:
+		return "resolver system error";
+	case DnsError::overflow:
+		return "resolver buffer overflow";
+	case DnsError::canceled:
+		return "resolution canceled or timed out";
+	case DnsError::unknown:
+		break;
+	}
+	return "unknown resolver error";
+}
+
+/** Translate a Zephyr `enum dns_resolve_status` into a `DnsError`. */
+[[nodiscard]] DnsError dns_error_from(int status) noexcept;
+
+/** The result of a resolution attempt. */
+template <typename T> using DnsResult = std::expected<T, DnsError>;
 
 /** Socket transport requested from DnsResolver. */
 enum class SocketType {
@@ -52,6 +121,15 @@ template <std::size_t Capacity = 4U> struct ResolvedAddresses {
 	{
 		return {entries.data(), count};
 	}
+	[[nodiscard]] constexpr bool empty() const noexcept
+	{
+		return count == 0U;
+	}
+	/** The first result, which is the one a client normally connects to. */
+	[[nodiscard]] constexpr const ResolvedAddress &front() const noexcept
+	{
+		return entries[0];
+	}
 };
 
 /** Synchronous DNS resolver with fixed result storage. */
@@ -59,12 +137,12 @@ class DnsResolver
 {
       public:
 	template <std::size_t Capacity = 4U>
-	[[nodiscard]] std::expected<ResolvedAddresses<Capacity>, int>
+	[[nodiscard]] DnsResult<ResolvedAddresses<Capacity>>
 	resolve(std::string_view host, std::uint16_t port, SocketType type = SocketType::tcp,
 		int family = AF_UNSPEC) const noexcept
 	{
 		if (host.empty() || host.size() > 253U) {
-			return std::unexpected(DNS_EAI_NONAME);
+			return std::unexpected(DnsError::no_name);
 		}
 
 		std::array<char, 254> name{};
@@ -78,7 +156,7 @@ class DnsResolver
 		zsock_addrinfo *results = nullptr;
 		const int rc = zsock_getaddrinfo(name.data(), nullptr, &hints, &results);
 		if (rc != 0) {
-			return std::unexpected(rc);
+			return std::unexpected(dns_error_from(rc));
 		}
 
 		ResolvedAddresses<Capacity> output{};
@@ -106,7 +184,7 @@ class DnsResolver
 		zsock_freeaddrinfo(results);
 
 		if (output.count == 0U) {
-			return std::unexpected(DNS_EAI_NONAME);
+			return std::unexpected(DnsError::no_data);
 		}
 		return output;
 	}
@@ -123,14 +201,17 @@ class UdpSocket
 	UdpSocket(UdpSocket &&other) noexcept;
 	UdpSocket &operator=(UdpSocket &&other) noexcept;
 
-	[[nodiscard]] std::expected<void, int> open(int family = AF_INET) noexcept;
-	[[nodiscard]] std::expected<void, int> bind(const ResolvedAddress &address) noexcept;
-	[[nodiscard]] std::expected<void, int> connect(const ResolvedAddress &address) noexcept;
-	[[nodiscard]] std::expected<std::size_t, int>
-	send(std::span<const std::byte> data) noexcept;
-	[[nodiscard]] std::expected<std::size_t, int>
-	send_to(std::span<const std::byte> data, const ResolvedAddress &address) noexcept;
-	[[nodiscard]] std::expected<std::size_t, int> receive(std::span<std::byte> buffer) noexcept;
+	[[nodiscard]] Result<> open(int family = AF_INET) noexcept;
+	[[nodiscard]] Result<> bind(const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<> connect(const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<std::size_t> send(std::span<const std::byte> data) noexcept;
+	[[nodiscard]] Result<std::size_t> send_to(std::span<const std::byte> data,
+						  const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<std::size_t> receive(std::span<std::byte> buffer) noexcept;
+
+	/** Bound the time a blocking receive may take. */
+	[[nodiscard]] Result<> set_receive_timeout(std::chrono::milliseconds timeout) noexcept;
+
 	void close() noexcept;
 
 	[[nodiscard]] constexpr bool is_open() const noexcept
@@ -157,12 +238,16 @@ class TcpSocket
 	TcpSocket(TcpSocket &&other) noexcept;
 	TcpSocket &operator=(TcpSocket &&other) noexcept;
 
-	[[nodiscard]] std::expected<void, int> open(int family = AF_INET) noexcept;
-	[[nodiscard]] std::expected<void, int> connect(const ResolvedAddress &address) noexcept;
-	[[nodiscard]] std::expected<std::size_t, int>
-	send_all(std::span<const std::byte> data) noexcept;
-	[[nodiscard]] std::expected<std::size_t, int> receive(std::span<std::byte> buffer) noexcept;
-	[[nodiscard]] std::expected<void, int> shutdown() noexcept;
+	[[nodiscard]] Result<> open(int family = AF_INET) noexcept;
+	[[nodiscard]] Result<> connect(const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<std::size_t> send_all(std::span<const std::byte> data) noexcept;
+	[[nodiscard]] Result<std::size_t> receive(std::span<std::byte> buffer) noexcept;
+	[[nodiscard]] Result<> shutdown() noexcept;
+
+	[[nodiscard]] Result<> set_receive_timeout(std::chrono::milliseconds timeout) noexcept;
+	/** Disable Nagle, for a request/response protocol that sends small frames. */
+	[[nodiscard]] Result<> set_no_delay(bool enabled) noexcept;
+
 	void close() noexcept;
 
 	[[nodiscard]] constexpr bool is_open() const noexcept

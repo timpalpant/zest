@@ -8,9 +8,6 @@
 
 #include <zephyr/drivers/gpio.h>
 
-#include <cerrno>
-#include <expected>
-
 namespace zest
 {
 namespace
@@ -26,73 +23,75 @@ namespace
 	return value == 0 ? GpioState::inactive : GpioState::active;
 }
 
-[[nodiscard]] std::expected<void, int> require_ready(const gpio_dt_spec &spec) noexcept
+[[nodiscard]] Result<> require_ready(const gpio_dt_spec &spec) noexcept
 {
 	if (!gpio_is_ready_dt(&spec)) {
-		return std::unexpected(-ENODEV);
+		return fail(errors::no_device);
 	}
 	return {};
 }
 
-[[nodiscard]] std::expected<GpioState, int> read(const gpio_dt_spec &spec) noexcept
+[[nodiscard]] Result<GpioState> read(const gpio_dt_spec &spec) noexcept
 {
 	const int value = gpio_pin_get_dt(&spec);
 	if (value < 0) {
-		return std::unexpected(value);
+		return fail(value);
 	}
 	return as_state(value);
 }
 
 } /* namespace */
 
-std::expected<void, int> GpioInput::init() const noexcept
+Result<> GpioInput::init() const noexcept
 {
-	if (const auto ready = require_ready(spec_); !ready) {
-		return ready;
-	}
-	if (const int rc = gpio_pin_configure_dt(&spec_, GPIO_INPUT); rc < 0) {
-		return std::unexpected(rc);
-	}
-	return {};
+	ZEST_TRY(require_ready(spec_));
+	return check(gpio_pin_configure_dt(&spec_, GPIO_INPUT));
 }
 
-std::expected<GpioState, int> GpioInput::get() const noexcept
+Result<GpioState> GpioInput::get() const noexcept
 {
 	return read(spec_);
 }
 
-std::expected<void, int> GpioOutput::init(GpioState initial) const noexcept
+Result<> GpioOutput::init(GpioState initial, bool enable_readback) noexcept
 {
-	if (const auto ready = require_ready(spec_); !ready) {
-		return ready;
-	}
+	ZEST_TRY(require_ready(spec_));
 
-	const gpio_flags_t flags =
+	gpio_flags_t flags =
 		initial == GpioState::active ? GPIO_OUTPUT_ACTIVE : GPIO_OUTPUT_INACTIVE;
-	if (const int rc = gpio_pin_configure_dt(&spec_, flags); rc < 0) {
-		return std::unexpected(rc);
+	if (enable_readback) {
+		flags |= GPIO_INPUT;
 	}
+	ZEST_TRY(check(gpio_pin_configure_dt(&spec_, flags)));
+
+	state_ = initial;
+	readback_ = enable_readback || (spec_.dt_flags & GPIO_INPUT) != 0;
 	return {};
 }
 
-std::expected<void, int> GpioOutput::set(GpioState state) const noexcept
+Result<> GpioOutput::set(GpioState state) noexcept
 {
-	if (const int rc = gpio_pin_set_dt(&spec_, as_value(state)); rc < 0) {
-		return std::unexpected(rc);
-	}
+	ZEST_TRY(check(gpio_pin_set_dt(&spec_, as_value(state))));
+	state_ = state;
 	return {};
 }
 
-std::expected<void, int> GpioOutput::toggle() const noexcept
+Result<> GpioOutput::toggle() noexcept
 {
-	if (const int rc = gpio_pin_toggle_dt(&spec_); rc < 0) {
-		return std::unexpected(rc);
-	}
+	ZEST_TRY(check(gpio_pin_toggle_dt(&spec_)));
+	state_ = invert(state_);
 	return {};
 }
 
-std::expected<GpioState, int> GpioOutput::get() const noexcept
+Result<GpioState> GpioOutput::read_pin() const noexcept
 {
+	if (!readback_) {
+		/*
+		 * A pin configured output-only reports a driver constant rather than
+		 * its level, so refuse instead of returning something meaningless.
+		 */
+		return fail(errors::not_supported);
+	}
 	return read(spec_);
 }
 

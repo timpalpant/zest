@@ -6,16 +6,15 @@
 
 #pragma once
 
+#include <zest/error.hpp>
 #include <zest/gpio.hpp>
+#include <zest/kernel.hpp>
 #include <zest/timing.hpp>
 
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/kernel.h>
 
 #include <chrono>
-#include <cerrno>
 #include <cstdint>
-#include <expected>
 
 namespace zest
 {
@@ -52,7 +51,12 @@ struct ButtonUpdate {
 	ButtonEvent events;
 };
 
-/** Poll-driven debounced button with click and long-press recognition. */
+/**
+ * Poll-driven debounced button with click and long-press recognition.
+ *
+ * Debouncing and event decoding happen in thread context; the interrupt only
+ * signals a semaphore, so no application code runs in ISR context.
+ */
 template <typename Clock = std::chrono::steady_clock> class Button
 {
       public:
@@ -62,29 +66,21 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	Button(gpio_dt_spec input, ButtonConfig config = {}) noexcept
 		: input_{input}, config_{config}, debouncer_{config.debounce}
 	{
-		k_sem_init(&activity_, 0, 1);
 	}
 	~Button() noexcept
 	{
-		if (interrupts_enabled_) {
-			(void)gpio_remove_callback(input_.native_spec().port, &callback_);
-		}
+		disable_interrupts();
 	}
 	Button(const Button &) = delete;
 	Button &operator=(const Button &) = delete;
 
 	/** Configure and sample the input to establish its initial stable state. */
-	[[nodiscard]] std::expected<void, int> init(time_point now = clock::now()) noexcept
+	[[nodiscard]] Result<> init(time_point now = clock::now()) noexcept
 	{
-		if (const auto ready = input_.init(); !ready) {
-			return ready;
-		}
-		const auto state = input_.get();
-		if (!state) {
-			return std::unexpected(state.error());
-		}
+		ZEST_TRY(input_.init());
+		ZEST_TRY_ASSIGN(state, input_.get());
 
-		const bool active = *state == GpioState::active;
+		const bool active = state == GpioState::active;
 		debouncer_.reset(active);
 		pressed_at_ = now;
 		long_press_sent_ = active && config_.long_press.count() == 0;
@@ -92,25 +88,23 @@ template <typename Clock = std::chrono::steady_clock> class Button
 		return {};
 	}
 
-	/** Enable both-edge wakeups. Events remain decoded by poll() in thread context. */
-	[[nodiscard]] std::expected<void, int> enable_interrupts() noexcept
+	/** Enable both-edge wakeups. Events are still decoded by poll(). */
+	[[nodiscard]] Result<> enable_interrupts() noexcept
 	{
 		if (!initialized_) {
-			return std::unexpected(-EACCES);
+			return fail(errors::not_connected);
 		}
 		if (interrupts_enabled_) {
 			return {};
 		}
 		const auto &spec = input_.native_spec();
 		gpio_init_callback(&callback_, interrupt_callback, BIT(spec.pin));
-		int rc = gpio_add_callback(spec.port, &callback_);
-		if (rc < 0) {
-			return std::unexpected(rc);
-		}
-		rc = gpio_pin_interrupt_configure_dt(&spec, GPIO_INT_EDGE_BOTH);
-		if (rc < 0) {
+		ZEST_TRY(check(gpio_add_callback(spec.port, &callback_)));
+
+		if (const int rc = gpio_pin_interrupt_configure_dt(&spec, GPIO_INT_EDGE_BOTH);
+		    rc < 0) {
 			(void)gpio_remove_callback(spec.port, &callback_);
-			return std::unexpected(rc);
+			return fail(rc);
 		}
 		interrupts_enabled_ = true;
 		return {};
@@ -128,18 +122,14 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	}
 
 	/** Poll the GPIO and report any debounced events. */
-	[[nodiscard]] std::expected<ButtonUpdate, int> poll(time_point now = clock::now()) noexcept
+	[[nodiscard]] Result<ButtonUpdate> poll(time_point now = clock::now()) noexcept
 	{
 		if (!initialized_) {
-			return std::unexpected(-EACCES);
+			return fail(errors::not_connected);
 		}
+		ZEST_TRY_ASSIGN(state, input_.get());
 
-		const auto state = input_.get();
-		if (!state) {
-			return std::unexpected(state.error());
-		}
-
-		const auto debounced = debouncer_.update(*state == GpioState::active, now);
+		const auto debounced = debouncer_.update(state == GpioState::active, now);
 		ButtonEvent events = ButtonEvent::none;
 
 		if (debounced.changed) {
@@ -165,30 +155,42 @@ template <typename Clock = std::chrono::steady_clock> class Button
 				    events};
 	}
 
-	/** Wait in thread context for any button event, using bounded polling. */
-	[[nodiscard]] std::expected<ButtonUpdate, int>
+	/**
+	 * Wait in thread context for any button event.
+	 *
+	 * A `milliseconds::max()` timeout waits indefinitely. When interrupts are
+	 * enabled the wait sleeps on the edge semaphore and only polls to re-check
+	 * timing; otherwise it polls at @p poll_interval.
+	 */
+	[[nodiscard]] Result<ButtonUpdate>
 	wait(std::chrono::milliseconds timeout = std::chrono::milliseconds::max(),
 	     std::chrono::milliseconds poll_interval = std::chrono::milliseconds{5}) noexcept
 	{
 		if (poll_interval <= std::chrono::milliseconds::zero()) {
-			return std::unexpected(-EINVAL);
+			return fail(errors::invalid_argument);
 		}
 		const auto started = clock::now();
+		const bool forever = timeout == std::chrono::milliseconds::max();
+
 		for (;;) {
-			auto update = poll(clock::now());
-			if (!update || update->events != ButtonEvent::none) {
+			ZEST_TRY_ASSIGN(update, poll(clock::now()));
+			if (update.events != ButtonEvent::none) {
 				return update;
 			}
-			if (timeout != std::chrono::milliseconds::max() &&
-			    clock::now() - started >= timeout) {
-				return std::unexpected(-ETIMEDOUT);
+			if (!forever && clock::now() - started >= timeout) {
+				return fail(errors::timed_out);
 			}
 			if (interrupts_enabled_) {
-				(void)k_sem_take(&activity_, K_MSEC(poll_interval.count()));
+				(void)activity_.take(poll_interval);
 			} else {
-				k_sleep(K_MSEC(poll_interval.count()));
+				sleep_for(poll_interval);
 			}
 		}
+	}
+
+	[[nodiscard]] constexpr bool interrupts_enabled() const noexcept
+	{
+		return interrupts_enabled_;
 	}
 
       private:
@@ -196,7 +198,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 				       gpio_port_pins_t) noexcept
 	{
 		auto *self = CONTAINER_OF(callback, Button, callback_);
-		k_sem_give(&self->activity_);
+		self->activity_.give();
 	}
 
 	GpioInput input_;
@@ -206,7 +208,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	bool initialized_{false};
 	bool long_press_sent_{false};
 	gpio_callback callback_{};
-	k_sem activity_{};
+	Semaphore activity_{0U, 1U};
 	bool interrupts_enabled_{false};
 };
 

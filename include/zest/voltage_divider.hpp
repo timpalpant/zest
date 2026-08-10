@@ -7,52 +7,81 @@
 #pragma once
 
 #include <zest/adc_channel.hpp>
+#include <zest/error.hpp>
+#include <zest/units.hpp>
 
-#include <cerrno>
+#include <cstddef>
 #include <cstdint>
-#include <expected>
 
 namespace zest
 {
 
-/** Reconstructs an input voltage measured through a resistive divider. */
+/**
+ * Reconstructs an input voltage measured through a resistive divider.
+ *
+ * The resistances are the `output-ohms` and `full-ohms` properties of a
+ * devicetree `voltage-divider` node. Reconstruction is integer-only.
+ */
 class VoltageDivider
 {
       public:
-	constexpr VoltageDivider(adc_dt_spec channel, std::int32_t output_ohms,
-				 std::int32_t full_ohms) noexcept
-		: channel_{channel}, output_ohms_{output_ohms}, full_ohms_{full_ohms}
+	constexpr VoltageDivider(adc_dt_spec channel, Ohms measured, Ohms full) noexcept
+		: channel_{channel}, measured_{measured}, full_{full}
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept
+	/** Accepts raw ohms, for call sites reading straight from devicetree. */
+	constexpr VoltageDivider(adc_dt_spec channel, std::int32_t output_ohms,
+				 std::int32_t full_ohms) noexcept
+		: channel_{channel}, measured_{output_ohms}, full_{full_ohms}
 	{
-		if (output_ohms_ <= 0 || full_ohms_ < output_ohms_) {
-			return std::unexpected(-EINVAL);
+	}
+
+	[[nodiscard]] Result<> init() const noexcept
+	{
+		if (measured_.count() <= 0 || full_.count() < measured_.count()) {
+			return fail(errors::invalid_argument);
 		}
 		return channel_.init();
 	}
 
-	template <std::size_t Samples = 1U>
-	[[nodiscard]] std::expected<std::int32_t, int> read_millivolts() const noexcept
+	/** Sample once and reconstruct the divider's input voltage. */
+	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
 	{
-		const auto output = channel_.read_average_millivolts<Samples>();
-		if (!output) {
-			return std::unexpected(output.error());
-		}
-		return static_cast<std::int32_t>((static_cast<std::int64_t>(*output) * full_ohms_) /
-						 output_ohms_);
+		ZEST_TRY_ASSIGN(output, channel_.read_millivolts());
+		return divider_input(output, measured_, full_);
+	}
+
+	/** Average @p samples conversions, then reconstruct. */
+	[[nodiscard]] Result<Millivolts> read_average_millivolts(std::size_t samples) const noexcept
+	{
+		ZEST_TRY_ASSIGN(output, channel_.read_average_millivolts(samples));
+		return divider_input(output, measured_, full_);
+	}
+
+	template <std::size_t Samples = 1U>
+	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
+	{
+		return read_average_millivolts(Samples);
 	}
 
 	[[nodiscard]] constexpr const AdcChannel &channel() const noexcept
 	{
 		return channel_;
 	}
+	[[nodiscard]] constexpr Ohms measured_resistance() const noexcept
+	{
+		return measured_;
+	}
+	[[nodiscard]] constexpr Ohms full_resistance() const noexcept
+	{
+		return full_;
+	}
 
       private:
 	AdcChannel channel_;
-	std::int32_t output_ohms_;
-	std::int32_t full_ohms_;
+	Ohms measured_;
+	Ohms full_;
 };
 
 } /* namespace zest */

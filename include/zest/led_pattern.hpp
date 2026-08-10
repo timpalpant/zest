@@ -6,14 +6,13 @@
 
 #pragma once
 
+#include <zest/error.hpp>
 #include <zest/gpio.hpp>
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <chrono>
 #include <cstddef>
-#include <expected>
 #include <span>
 
 namespace zest
@@ -28,9 +27,9 @@ struct LedPatternStep {
 /**
  * Fixed-storage, poll-driven GPIO LED pattern player.
  *
- * start() copies the supplied pattern, so the caller's storage need not
- * outlive the call. update() should be called from the application's existing
- * event loop or periodic work item; the player does not create a thread.
+ * `start()` copies the supplied pattern, so the caller's storage need not
+ * outlive the call. `update()` should be called from an existing event loop or
+ * periodic work item; the player does not create a thread.
  */
 template <std::size_t MaxSteps = 16U, typename Clock = std::chrono::steady_clock>
 class LedPatternPlayer
@@ -45,24 +44,23 @@ class LedPatternPlayer
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept
+	[[nodiscard]] Result<> init() noexcept
 	{
 		return output_.init(GpioState::inactive);
 	}
 
-	[[nodiscard]] std::expected<void, int> start(std::span<const LedPatternStep> pattern,
-						     bool repeat = true,
-						     time_point now = clock::now()) noexcept
+	[[nodiscard]] Result<> start(std::span<const LedPatternStep> pattern, bool repeat = true,
+				     time_point now = clock::now()) noexcept
 	{
 		if (pattern.empty()) {
-			return std::unexpected(-EINVAL);
+			return fail(errors::invalid_argument);
 		}
 		if (pattern.size() > MaxSteps) {
-			return std::unexpected(-E2BIG);
+			return fail(errors::too_big);
 		}
 		for (const auto &step : pattern) {
 			if (step.duration <= std::chrono::milliseconds::zero()) {
-				return std::unexpected(-EINVAL);
+				return fail(errors::invalid_argument);
 			}
 		}
 
@@ -79,9 +77,20 @@ class LedPatternPlayer
 		return {};
 	}
 
-	/** Advance the pattern to @p now. Safe to call more frequently than necessary. */
-	[[nodiscard]] std::expected<void, int> update(time_point now = clock::now()) noexcept
+	/**
+	 * Advance the pattern to @p now. Safe to call more often than necessary.
+	 *
+	 * A long gap since the previous call is skipped over rather than replayed
+	 * step by step, so a delayed event loop does not produce a burst of writes.
+	 */
+	[[nodiscard]] Result<> update(time_point now = clock::now()) noexcept
 	{
+		if (count_ == 0U || now < deadline_) {
+			return {};
+		}
+
+		std::size_t guard = 0U;
+		const std::size_t limit = count_ + 1U;
 		while (count_ != 0U && now >= deadline_) {
 			++index_;
 			if (index_ == count_) {
@@ -91,17 +100,31 @@ class LedPatternPlayer
 				}
 				index_ = 0U;
 			}
-
 			deadline_ += steps_[index_].duration;
-			if (const auto result = output_.set(steps_[index_].state); !result) {
-				count_ = 0U;
-				return result;
+
+			/*
+			 * After a full cycle of catch-up, jump the deadline forward
+			 * instead of writing the pin once per skipped step.
+			 */
+			if (++guard > limit) {
+				while (now >= deadline_) {
+					deadline_ += steps_[index_].duration;
+				}
+				break;
 			}
+		}
+
+		if (count_ == 0U) {
+			return {};
+		}
+		if (const auto result = output_.set(steps_[index_].state); !result) {
+			count_ = 0U;
+			return result;
 		}
 		return {};
 	}
 
-	[[nodiscard]] std::expected<void, int> stop() noexcept
+	[[nodiscard]] Result<> stop() noexcept
 	{
 		count_ = 0U;
 		index_ = 0U;

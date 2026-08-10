@@ -6,16 +6,25 @@
 
 #pragma once
 
+#include <zest/error.hpp>
+#include <zest/units.hpp>
+
 #include <zephyr/drivers/adc.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
-#include <expected>
 
 namespace zest
 {
 
-/** A devicetree-configured ADC channel. */
+/**
+ * A devicetree-configured ADC channel.
+ *
+ * Sample width follows the channel's configured resolution. An earlier version
+ * hard-coded a 16-bit signed buffer, which truncates on 18- and 24-bit parts and
+ * reads negative for a single-ended value above 0x7FFF.
+ */
 class AdcChannel
 {
       public:
@@ -24,38 +33,52 @@ class AdcChannel
 	}
 
 	/** Configure the underlying ADC channel. */
-	[[nodiscard]] std::expected<void, int> init() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept;
 
 	/** Perform one conversion and return its raw sample value. */
-	[[nodiscard]] std::expected<std::int32_t, int> read_raw() const noexcept;
+	[[nodiscard]] Result<std::int32_t> read_raw() const noexcept;
 
-	/** Perform one conversion and return the input voltage in millivolts. */
-	[[nodiscard]] std::expected<std::int32_t, int> read_millivolts() const noexcept;
+	/** Perform one conversion and return the input voltage. */
+	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept;
 
 	/**
-	 * Average a compile-time number of voltage conversions.
+	 * Average @p samples conversions taken in a single hardware sequence.
 	 *
-	 * The first failed conversion ends the operation and returns its negative
-	 * Zephyr errno unchanged.
+	 * Uses `adc_sequence_options::extra_samplings`, so the driver is entered
+	 * once rather than once per sample. Drivers that reject multi-sampling fall
+	 * back to repeated single conversions automatically.
 	 */
+	[[nodiscard]] Result<Millivolts> read_average_millivolts(std::size_t samples) const noexcept;
+
+	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
-	[[nodiscard]] std::expected<std::int32_t, int> read_average_millivolts() const noexcept
+	[[nodiscard]] Result<Millivolts> read_average_millivolts() const noexcept
 	{
 		static_assert(Samples > 0U, "at least one ADC sample is required");
+		return read_average_millivolts(Samples);
+	}
 
-		std::int64_t total = 0;
-		for (std::size_t i = 0; i < Samples; ++i) {
-			const auto sample = read_millivolts();
-			if (!sample) {
-				return std::unexpected(sample.error());
-			}
-			total += *sample;
-		}
+	/** The channel's configured resolution in bits. */
+	[[nodiscard]] constexpr std::uint8_t resolution() const noexcept
+	{
+		return spec_.resolution;
+	}
 
-		return static_cast<std::int32_t>(total / static_cast<std::int64_t>(Samples));
+	/** Whether samples are wider than 16 bits and so need 32-bit storage. */
+	[[nodiscard]] constexpr bool wide_samples() const noexcept
+	{
+		return spec_.resolution > 16U;
+	}
+
+	[[nodiscard]] constexpr const adc_dt_spec &native_spec() const noexcept
+	{
+		return spec_;
 	}
 
       private:
+	/** Convert a raw reading to millivolts using the channel's reference. */
+	[[nodiscard]] Result<Millivolts> to_millivolts(std::int32_t raw) const noexcept;
+
 	adc_dt_spec spec_;
 };
 

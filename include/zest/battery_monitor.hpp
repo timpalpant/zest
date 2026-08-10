@@ -6,50 +6,67 @@
 
 #pragma once
 
+#include <zest/error.hpp>
+#include <zest/units.hpp>
 #include <zest/voltage_divider.hpp>
 
+#include <cstddef>
 #include <cstdint>
-#include <expected>
 
 namespace zest
 {
 
 /**
- * Failures are reported as the negative errno from the underlying Zephyr ADC
- * call, passed through unchanged.
- */
-using Error = int;
-
-/**
  * Reads battery voltage through a resistive divider.
  *
  * The divider ratio is given as the two resistances from the devicetree
- * `voltage-divider` node.
+ * `voltage-divider` node. Charge estimation is deliberately separate: pair this
+ * with a `BatteryCurve` from `zest/battery_curve.hpp`.
  */
 class BatteryMonitor
 {
       public:
+	/** Number of ADC conversions averaged into one reading by default. */
+	static constexpr std::size_t kDefaultOversample = 16U;
+
+	constexpr BatteryMonitor(adc_dt_spec channel, Ohms measured, Ohms full,
+				 std::size_t oversample = kDefaultOversample) noexcept
+		: divider_{channel, measured, full}, oversample_{oversample == 0U ? 1U : oversample}
+	{
+	}
+
 	constexpr BatteryMonitor(adc_dt_spec channel, std::int32_t output_ohms,
-				 std::int32_t full_ohms) noexcept
-		: divider_{channel, output_ohms, full_ohms}
+				 std::int32_t full_ohms,
+				 std::size_t oversample = kDefaultOversample) noexcept
+		: divider_{channel, output_ohms, full_ohms},
+		  oversample_{oversample == 0U ? 1U : oversample}
 	{
 	}
 
 	/** Configure the ADC channel. Call once before read_millivolts(). */
-	[[nodiscard]] std::expected<void, Error> init() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept
+	{
+		return divider_.init();
+	}
 
-	/**
-	 * Sample the battery.
-	 *
-	 * Averages kOversample conversions to reduce ADC noise.
-	 */
-	[[nodiscard]] std::expected<std::int32_t, Error> read_millivolts() const noexcept;
+	/** Sample the battery, averaging the configured number of conversions. */
+	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
+	{
+		return divider_.read_average_millivolts(oversample_);
+	}
+
+	[[nodiscard]] constexpr const VoltageDivider &divider() const noexcept
+	{
+		return divider_;
+	}
+	[[nodiscard]] constexpr std::size_t oversample() const noexcept
+	{
+		return oversample_;
+	}
 
       private:
-	/* Number of ADC conversions averaged into one reading. */
-	static constexpr int kOversample = 16;
-
 	VoltageDivider divider_;
+	std::size_t oversample_;
 };
 
 } /* namespace zest */

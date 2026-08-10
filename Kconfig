@@ -7,6 +7,14 @@ menuconfig ZEST
 
 if ZEST
 
+config ZEST_ERROR_STRINGS
+	bool "Error descriptions"
+	default y
+	help
+	  Compile the table behind zest::Error::message(). Costs roughly 700 bytes
+	  of read-only storage. Disable it on a flash-tight image; message() then
+	  returns a placeholder and the numeric code remains available via value().
+
 config ZEST_ADC_CHANNEL
 	bool "AdcChannel"
 	depends on ADC
@@ -43,7 +51,7 @@ config ZEST_PWM_OUTPUT
 
 config ZEST_SENSOR
 	bool "Read-and-Decode sensor access"
-	depends on SENSOR_ASYNC_API
+	depends on SENSOR && SENSOR_ASYNC_API && RTIO
 	help
 	  Typed blocking, batched, and RTIO mempool-backed sensor reads with
 	  fixed-storage channel and periodic sampling helpers.
@@ -135,9 +143,41 @@ config ZEST_BATTERY_MONITOR
 config ZEST_HTTP_CLIENT
 	bool "HttpClient"
 	depends on NETWORKING && NET_SOCKETS && NET_TCP
-	depends on DNS_RESOLVER && HTTP_CLIENT && NET_SOCKETS_SOCKOPT_TLS
+	depends on DNS_RESOLVER && HTTP_CLIENT
 	help
-	  Synchronous HTTP/1.1 and HTTPS client with caller-owned response storage.
+	  Synchronous HTTP/1.1 client with caller-owned response storage.
+
+	  TLS is a separate option, so a device that only talks to a plain-HTTP
+	  endpoint no longer has to pull in mbedTLS and its heap.
+
+if ZEST_HTTP_CLIENT
+
+config ZEST_HTTP_CLIENT_TLS
+	bool "HTTPS support"
+	default y
+	depends on NET_SOCKETS_SOCKOPT_TLS
+	help
+	  Enable https:// URLs, peer verification and SNI. Without this an https URL
+	  is refused at the TLS configuration stage.
+
+config ZEST_HTTP_RECV_BUF_SIZE
+	int "Receive chunk size"
+	default 1024
+	range 256 8192
+	help
+	  Size of the stack buffer HttpClient::request() gives Zephyr's HTTP client
+	  for incremental parsing. This dominates the call's stack cost, so lower it
+	  on a small thread and raise it for large headers.
+
+config ZEST_HTTP_MAX_URL_LEN
+	int "Maximum URL length"
+	default 512
+	range 128 2048
+	help
+	  Longest accepted request URL. The parsed host and path are held on the
+	  stack, so this contributes directly to the stack cost of a request.
+
+endif # ZEST_HTTP_CLIENT
 
 config ZEST_WIFI_MANAGER
 	bool "WifiManager"
@@ -148,12 +188,19 @@ config ZEST_WIFI_MANAGER
 
 config ZEST_BLUETOOTH_MANAGER
 	bool "BluetoothManager"
-	select BT
-	select BT_CENTRAL
-	select BT_DEVICE_NAME_DYNAMIC
+	depends on BT
+	depends on BT_CENTRAL || BT_PERIPHERAL
 	help
-	  BLE manager with Zephyr Bluetooth, central-role support, and dynamic
-	  device naming. Bluetooth controllers can reserve substantial RAM, even
-	  before enable() is called.
+	  BLE manager covering the Zephyr Bluetooth lifecycle, central-role
+	  connections, and peripheral advertising.
+
+	  This depends on Bluetooth rather than selecting it: force-selecting a
+	  subsystem bypasses its own dependency checks, which turns "no controller
+	  on this board" into a confusing unsatisfied-dependency warning instead of
+	  the option simply being unavailable. Enable CONFIG_BT and the role you
+	  need in the application.
+
+	  Set CONFIG_BT_DEVICE_NAME_DYNAMIC=y to use enable()'s device-name
+	  argument.
 
 endif

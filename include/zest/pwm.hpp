@@ -6,14 +6,40 @@
 
 #pragma once
 
+#include <zest/error.hpp>
+#include <zest/units.hpp>
+
 #include <zephyr/drivers/pwm.h>
 
 #include <chrono>
 #include <cstdint>
-#include <expected>
 
 namespace zest
 {
+
+/**
+ * Duty cycle in per-mille (0..1000).
+ *
+ * Integer rather than a `double`: no common Cortex-M part has a
+ * double-precision FPU, so a floating duty in an LED or motor update loop is a
+ * soft-float call. Per-mille is finer than any PWM peripheral resolves in
+ * practice.
+ */
+using PerMille = std::uint16_t;
+
+inline constexpr PerMille kFullScale = 1000U;
+
+/** Convert a 0..1 fraction to per-mille, clamping out-of-range input. */
+[[nodiscard]] constexpr PerMille per_mille_from(float fraction) noexcept
+{
+	if (fraction <= 0.0F) {
+		return 0U;
+	}
+	if (fraction >= 1.0F) {
+		return kFullScale;
+	}
+	return static_cast<PerMille>(fraction * 1000.0F + 0.5F);
+}
 
 /** A devicetree-configured PWM output. */
 class PwmOutput
@@ -24,25 +50,35 @@ class PwmOutput
 	}
 
 	/** Verify the controller and drive a zero pulse. */
-	[[nodiscard]] std::expected<void, int> init() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept;
 
 	/** Set the pulse width using the period from devicetree. */
-	[[nodiscard]] std::expected<void, int>
-	set_pulse(std::chrono::nanoseconds pulse) const noexcept;
+	[[nodiscard]] Result<> set_pulse(std::chrono::nanoseconds pulse) const noexcept;
 
-	/** Set a duty cycle in the inclusive range 0..1. */
-	[[nodiscard]] std::expected<void, int> set_duty_cycle(double duty_cycle) const noexcept;
+	/** Set the duty cycle in per-mille, using integer arithmetic throughout. */
+	[[nodiscard]] Result<> set_duty(PerMille duty) const noexcept;
+
+	/** Convenience for a 0..1 fraction; converts to per-mille first. */
+	[[nodiscard]] Result<> set_duty_cycle(float duty_cycle) const noexcept
+	{
+		return set_duty(per_mille_from(duty_cycle));
+	}
 
 	/** Set both period and pulse width. */
-	[[nodiscard]] std::expected<void, int> set(std::chrono::nanoseconds period,
-						   std::chrono::nanoseconds pulse) const noexcept;
+	[[nodiscard]] Result<> set(std::chrono::nanoseconds period,
+				   std::chrono::nanoseconds pulse) const noexcept;
 
 	/** Drive a zero pulse. */
-	[[nodiscard]] std::expected<void, int> disable() const noexcept;
+	[[nodiscard]] Result<> disable() const noexcept;
 
 	[[nodiscard]] constexpr std::chrono::nanoseconds period() const noexcept
 	{
 		return std::chrono::nanoseconds{spec_.period};
+	}
+
+	[[nodiscard]] constexpr const pwm_dt_spec &native_spec() const noexcept
+	{
+		return spec_;
 	}
 
       private:
@@ -57,17 +93,26 @@ class DimmableLed
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		return output_.init();
 	}
-	[[nodiscard]] std::expected<void, int> set_brightness(double brightness) const noexcept
+	[[nodiscard]] Result<> set_brightness(PerMille brightness) const noexcept
+	{
+		return output_.set_duty(brightness);
+	}
+	[[nodiscard]] Result<> set_brightness(float brightness) const noexcept
 	{
 		return output_.set_duty_cycle(brightness);
 	}
-	[[nodiscard]] std::expected<void, int> off() const noexcept
+	[[nodiscard]] Result<> off() const noexcept
 	{
 		return output_.disable();
+	}
+
+	[[nodiscard]] constexpr const PwmOutput &output() const noexcept
+	{
+		return output_;
 	}
 
       private:
@@ -81,6 +126,16 @@ struct RgbColor {
 	std::uint8_t blue;
 };
 
+namespace colors
+{
+inline constexpr RgbColor off{0U, 0U, 0U};
+inline constexpr RgbColor red{255U, 0U, 0U};
+inline constexpr RgbColor green{0U, 255U, 0U};
+inline constexpr RgbColor blue{0U, 0U, 255U};
+inline constexpr RgbColor amber{255U, 191U, 0U};
+inline constexpr RgbColor white{255U, 255U, 255U};
+} /* namespace colors */
+
 /** Three-channel PWM RGB LED. */
 class RgbLed
 {
@@ -90,9 +145,9 @@ class RgbLed
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept;
-	[[nodiscard]] std::expected<void, int> set(RgbColor color) const noexcept;
-	[[nodiscard]] std::expected<void, int> off() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept;
+	[[nodiscard]] Result<> set(RgbColor color) const noexcept;
+	[[nodiscard]] Result<> off() const noexcept;
 
       private:
 	PwmOutput red_;
@@ -110,15 +165,20 @@ class Servo
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		return output_.init();
 	}
 
-	/** Set normalized position from 0 to 1. */
-	[[nodiscard]] std::expected<void, int> set_position(double position) const noexcept;
+	/** Set position in per-mille of travel, from 0 to 1000. */
+	[[nodiscard]] Result<> set_position(PerMille position) const noexcept;
 
-	[[nodiscard]] std::expected<void, int> disable() const noexcept
+	[[nodiscard]] Result<> set_position(float position) const noexcept
+	{
+		return set_position(per_mille_from(position));
+	}
+
+	[[nodiscard]] Result<> disable() const noexcept
 	{
 		return output_.disable();
 	}
@@ -137,16 +197,15 @@ class Buzzer
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		return output_.init();
 	}
 
-	/** Start a tone. Volume is a duty amplitude in the inclusive range 0..1. */
-	[[nodiscard]] std::expected<void, int> tone(std::uint32_t frequency_hz,
-						    double volume = 1.0) const noexcept;
+	/** Start a tone. Volume is a duty amplitude in per-mille. */
+	[[nodiscard]] Result<> tone(Hertz frequency, PerMille volume = kFullScale) const noexcept;
 
-	[[nodiscard]] std::expected<void, int> stop() const noexcept
+	[[nodiscard]] Result<> stop() const noexcept
 	{
 		return output_.disable();
 	}

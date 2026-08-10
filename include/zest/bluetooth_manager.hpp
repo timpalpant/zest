@@ -4,26 +4,30 @@
  * SPDX-License-Identifier: LGPL-3.0-or-later
  */
 
-#ifndef ZEST_BLUETOOTH_MANAGER_HPP_
-#define ZEST_BLUETOOTH_MANAGER_HPP_
+#pragma once
+
+#include <zest/error.hpp>
+#include <zest/function.hpp>
+#include <zest/kernel.hpp>
+
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
 
 #include <chrono>
 #include <cstdint>
-#include <expected>
+#include <span>
 #include <string_view>
-
-#include <zephyr/kernel.h>
-
-#if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-#include <zephyr/bluetooth/conn.h>
-#endif
 
 namespace zest
 {
 
-/* A small BLE connection manager. Zephyr's ESP32 support exposes BLE rather
- * than Arduino's BluetoothSerial API, so connect() accepts a BLE identity
- * address and its public/random address type.
+/**
+ * A small BLE connection manager covering both roles.
+ *
+ * Central-role `connect()` takes a BLE identity address. Peripheral-role
+ * `start_advertising()` was previously missing entirely, which left the archetypal
+ * sensor node --- advertise, accept a connection, expose a characteristic ---
+ * unable to use this class at all.
  */
 class BluetoothManager
 {
@@ -31,6 +35,7 @@ class BluetoothManager
 	enum class State : std::uint8_t {
 		disabled,
 		enabled,
+		advertising,
 		connecting,
 		connected,
 		disconnecting,
@@ -38,7 +43,7 @@ class BluetoothManager
 
 	enum class AddressType : std::uint8_t {
 		public_,
-		random
+		random,
 	};
 
 	struct Peer {
@@ -46,41 +51,71 @@ class BluetoothManager
 		AddressType type{AddressType::public_};
 	};
 
+	/** How the device should advertise in the peripheral role. */
+	struct AdvertisingOptions {
+		/** Allow a central to connect, rather than advertising only. */
+		bool connectable{true};
+		/** Include the device name in the advertisement. */
+		bool include_name{true};
+		std::chrono::milliseconds interval_min{100};
+		std::chrono::milliseconds interval_max{150};
+	};
+
+	using StateHandler = InplaceFunction<void(State) noexcept, 3 * sizeof(void *)>;
+
 	BluetoothManager() noexcept;
 	~BluetoothManager() noexcept;
 
 	BluetoothManager(const BluetoothManager &) = delete;
 	BluetoothManager &operator=(const BluetoothManager &) = delete;
 
-	[[nodiscard]] std::expected<void, int> enable(std::string_view device_name = {}) noexcept;
-	[[nodiscard]] std::expected<void, int> disable() noexcept;
-	[[nodiscard]] std::expected<void, int>
+	/** Whether this instance owns the stack's connection callbacks. */
+	[[nodiscard]] bool owns_stack() const noexcept;
+
+	[[nodiscard]] Result<> enable(std::string_view device_name = {}) noexcept;
+	[[nodiscard]] Result<> disable() noexcept;
+
+	/** Begin advertising in the peripheral role. */
+	[[nodiscard]] Result<> start_advertising(const AdvertisingOptions &options = {}) noexcept;
+	[[nodiscard]] Result<> stop_advertising() noexcept;
+
+	[[nodiscard]] Result<>
 	connect(const Peer &peer,
 		std::chrono::milliseconds timeout = std::chrono::seconds{30}) noexcept;
-	[[nodiscard]] std::expected<void, int> disconnect() noexcept;
+	[[nodiscard]] Result<> disconnect() noexcept;
+
+	template <typename F> void on_state_change(F &&handler) noexcept
+	{
+		state_handler_ = std::forward<F>(handler);
+	}
 
 	[[nodiscard]] State state() const noexcept;
 	[[nodiscard]] bool connected() const noexcept
 	{
 		return state() == State::connected;
 	}
+	[[nodiscard]] bool advertising() const noexcept
+	{
+		return advertising_;
+	}
 
       private:
-#if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	static void connected_callback(struct bt_conn *connection, std::uint8_t error) noexcept;
 	static void disconnected_callback(struct bt_conn *connection, std::uint8_t reason) noexcept;
+	void set_state(State state) noexcept;
+
 	struct bt_conn *connection_{};
 	struct bt_conn_cb callbacks_{};
-#endif
-	struct k_sem state_changed_{};
-	struct k_mutex mutex_{};
+	Semaphore state_changed_{0U, 1U};
+	Mutex mutex_{};
+	StateHandler state_handler_{};
 	atomic_t state_{ATOMIC_INIT(static_cast<atomic_val_t>(State::disabled))};
 	int connection_error_{};
+	bool advertising_{false};
+
 	static BluetoothManager *instance_;
 };
 
 [[nodiscard]] const char *to_string(BluetoothManager::State state) noexcept;
 
-} // namespace zest
-
-#endif
+} /* namespace zest */

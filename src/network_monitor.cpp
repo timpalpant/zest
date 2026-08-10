@@ -6,8 +6,6 @@
 
 #include <zest/network_monitor.hpp>
 
-#include <cerrno>
-
 namespace zest
 {
 namespace
@@ -15,11 +13,10 @@ namespace
 constexpr atomic_val_t interface_up = 1 << 0;
 constexpr atomic_val_t ipv4_ready = 1 << 1;
 constexpr atomic_val_t ipv6_ready = 1 << 2;
-} // namespace
+} /* namespace */
 
 NetworkMonitor::NetworkMonitor(net_if *interface) noexcept : interface_{interface}
 {
-	k_sem_init(&changed_, 0, 1);
 	interface_callback_.owner = this;
 	ipv4_callback_.owner = this;
 	ipv6_callback_.owner = this;
@@ -30,10 +27,10 @@ NetworkMonitor::~NetworkMonitor() noexcept
 	stop();
 }
 
-std::expected<void, int> NetworkMonitor::start() noexcept
+Result<> NetworkMonitor::start() noexcept
 {
 	if (interface_ == nullptr) {
-		return std::unexpected(-ENODEV);
+		return fail(errors::no_device);
 	}
 	if (started_) {
 		return {};
@@ -48,12 +45,14 @@ std::expected<void, int> NetworkMonitor::start() noexcept
 	net_mgmt_init_event_callback(&ipv6_callback_.callback, event_handler,
 				     NET_EVENT_IPV6_ADDR_ADD | NET_EVENT_IPV6_ADDR_DEL);
 #endif
+	/* Register before sampling, so no transition can slip between the two. */
 	net_mgmt_add_event_callback(&interface_callback_.callback);
 	net_mgmt_add_event_callback(&ipv4_callback_.callback);
 #if defined(CONFIG_NET_IPV6)
 	net_mgmt_add_event_callback(&ipv6_callback_.callback);
 #endif
 	started_ = true;
+
 	if (net_if_is_up(interface_)) {
 		atomic_or(&flags_, interface_up);
 	}
@@ -93,20 +92,52 @@ NetworkState NetworkMonitor::state() const noexcept
 	};
 }
 
-std::expected<NetworkState, int>
-NetworkMonitor::wait_for_ipv4(std::chrono::milliseconds timeout) noexcept
+template <typename Predicate>
+Result<NetworkState> NetworkMonitor::wait_until(std::chrono::milliseconds timeout,
+						Predicate ready) noexcept
 {
 	if (!started_) {
-		return std::unexpected(-EACCES);
+		return fail(errors::permission_denied);
 	}
-	const auto deadline = k_uptime_get() + timeout.count();
-	while (!state().ipv4_ready) {
-		const auto remaining = deadline - k_uptime_get();
-		if (remaining <= 0 || k_sem_take(&changed_, K_MSEC(remaining)) != 0) {
-			return std::unexpected(-ETIMEDOUT);
+	if (ready(state())) {
+		return state();
+	}
+
+	/*
+	 * A max() timeout means "wait forever". Computing an absolute deadline from
+	 * it overflows, which is why this waits on relative slices instead.
+	 */
+	const bool forever = timeout == std::chrono::milliseconds::max();
+	auto remaining = timeout;
+
+	while (!ready(state())) {
+		if (forever) {
+			ZEST_TRY(changed_.take(std::chrono::milliseconds::max()));
+			continue;
 		}
+		if (remaining <= std::chrono::milliseconds::zero()) {
+			return fail(errors::timed_out);
+		}
+		const auto slice_start = uptime();
+		if (!changed_.take(remaining)) {
+			return fail(errors::timed_out);
+		}
+		const auto elapsed = uptime() - slice_start;
+		remaining -= elapsed > std::chrono::milliseconds::zero()
+				     ? elapsed
+				     : std::chrono::milliseconds{1};
 	}
 	return state();
+}
+
+Result<NetworkState> NetworkMonitor::wait_for_ipv4(std::chrono::milliseconds timeout) noexcept
+{
+	return wait_until(timeout, [](const NetworkState &state) { return state.ipv4_ready; });
+}
+
+Result<NetworkState> NetworkMonitor::wait_for_ready(std::chrono::milliseconds timeout) noexcept
+{
+	return wait_until(timeout, [](const NetworkState &state) { return state.ready(); });
 }
 
 void NetworkMonitor::event_handler(net_mgmt_event_callback *callback, std::uint64_t event,
@@ -138,7 +169,7 @@ void NetworkMonitor::handle(std::uint64_t event, net_if *interface) noexcept
 		atomic_and(&flags_, ~ipv6_ready);
 #endif
 	}
-	k_sem_give(&changed_);
+	changed_.give();
 }
 
 } /* namespace zest */

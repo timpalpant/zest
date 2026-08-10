@@ -6,23 +6,36 @@
 
 #pragma once
 
+#include <zest/error.hpp>
 #include <zest/settings.hpp>
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <cstdint>
-#include <expected>
 #include <string_view>
 
 namespace zest
 {
 
+/**
+ * Persisted Wi-Fi credentials.
+ *
+ * The record carries an explicit version so a future layout change is detected
+ * rather than misread: without it, reordering a field silently reinterprets
+ * whatever is already in flash.
+ *
+ * The pre-shared key is stored in plaintext, because Zephyr's settings backends
+ * do not encrypt. On a part with flash protection or a key store, wrap this or
+ * keep the key elsewhere.
+ */
 struct ProvisionedWifi {
-	std::array<char, 33> ssid{};
-	std::array<char, 65> password{};
+	static constexpr std::uint16_t kVersion = 1U;
+
+	std::uint16_t version{kVersion};
 	std::uint8_t ssid_length{};
 	std::uint8_t password_length{};
+	std::array<char, 33> ssid{};
+	std::array<char, 65> password{};
 
 	[[nodiscard]] std::string_view ssid_view() const noexcept
 	{
@@ -43,16 +56,16 @@ template <std::size_t MaximumNameLength = 64U> class ProvisioningManager
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		return settings_.init();
 	}
 
-	[[nodiscard]] std::expected<void, int> provision(std::string_view ssid,
-							 std::string_view password) const noexcept
+	[[nodiscard]] Result<> provision(std::string_view ssid,
+					 std::string_view password) const noexcept
 	{
 		if (ssid.empty() || ssid.size() > 32U || password.size() > 64U) {
-			return std::unexpected(-EINVAL);
+			return fail(errors::invalid_argument);
 		}
 		ProvisionedWifi value{};
 		std::copy(ssid.begin(), ssid.end(), value.ssid.begin());
@@ -62,23 +75,24 @@ template <std::size_t MaximumNameLength = 64U> class ProvisioningManager
 		return settings_.set("wifi", value);
 	}
 
-	[[nodiscard]] std::expected<ProvisionedWifi, int> credentials() const noexcept
+	[[nodiscard]] Result<ProvisionedWifi> credentials() const noexcept
 	{
-		auto result = settings_.template get<ProvisionedWifi>("wifi");
-		if (!result) {
-			return result;
+		ZEST_TRY_ASSIGN(record, settings_.template get<ProvisionedWifi>("wifi"));
+		if (record.version != ProvisionedWifi::kVersion) {
+			return fail(errors::bad_message);
 		}
-		if (result->ssid_length == 0U || result->ssid_length > 32U ||
-		    result->password_length > 64U) {
-			return std::unexpected(-EBADMSG);
+		if (record.ssid_length == 0U || record.ssid_length > 32U ||
+		    record.password_length > 64U) {
+			return fail(errors::bad_message);
 		}
-		return result;
+		return record;
 	}
 
-	[[nodiscard]] std::expected<void, int> clear() const noexcept
+	[[nodiscard]] Result<> clear() const noexcept
 	{
 		return settings_.erase("wifi");
 	}
+
 	[[nodiscard]] bool provisioned() const noexcept
 	{
 		return credentials().has_value();

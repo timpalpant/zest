@@ -8,23 +8,18 @@
 
 #include <cerrno>
 #include <chrono>
-#include <expected>
 #include <string_view>
 #include <time.h>
 
 namespace zest
 {
 
-std::expected<NetworkTime, int>
-TimeSynchronizer::synchronize(std::string_view server,
-			      std::chrono::milliseconds timeout) const noexcept
+Result<NetworkTime> TimeSynchronizer::synchronize(std::string_view server,
+						  std::chrono::milliseconds timeout) const noexcept
 {
-	auto result = client_.query(server, timeout);
-	if (!result) {
-		return std::unexpected(result.error());
-	}
+	ZEST_TRY_ASSIGN(network_time, client_.query(server, timeout));
 
-	const auto since_epoch = result->time.time_since_epoch();
+	const auto since_epoch = network_time.time.time_since_epoch();
 	const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(since_epoch);
 	const auto nanoseconds =
 		std::chrono::duration_cast<std::chrono::nanoseconds>(since_epoch - seconds);
@@ -33,9 +28,9 @@ TimeSynchronizer::synchronize(std::string_view server,
 		.tv_nsec = static_cast<long>(nanoseconds.count()),
 	};
 	if (clock_settime(CLOCK_REALTIME, &value) < 0) {
-		return std::unexpected(errno == 0 ? -EIO : -errno);
+		return fail(errno == 0 ? errors::io_error.value() : -errno);
 	}
-	return result;
+	return network_time;
 }
 
 } /* namespace zest */

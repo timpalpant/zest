@@ -6,9 +6,10 @@
 
 #pragma once
 
+#include <zest/error.hpp>
+
 #include <chrono>
 #include <cstdint>
-#include <expected>
 #include <string_view>
 
 namespace zest
@@ -20,11 +21,11 @@ struct NetworkTime {
 	std::chrono::microseconds response_delay;
 };
 
-/** One-shot SNTP client. */
+/** One-shot SNTP client that does not touch the system clock. */
 class SntpClient
 {
       public:
-	[[nodiscard]] std::expected<NetworkTime, int>
+	[[nodiscard]] Result<NetworkTime>
 	query(std::string_view server,
 	      std::chrono::milliseconds timeout = std::chrono::seconds{10}) const noexcept;
 };
@@ -33,7 +34,7 @@ class SntpClient
 class TimeSynchronizer
 {
       public:
-	[[nodiscard]] std::expected<NetworkTime, int>
+	[[nodiscard]] Result<NetworkTime>
 	synchronize(std::string_view server,
 		    std::chrono::milliseconds timeout = std::chrono::seconds{10}) const noexcept;
 

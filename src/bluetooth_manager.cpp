@@ -6,15 +6,12 @@
 
 #include <zest/bluetooth_manager.hpp>
 
-#include <array>
-#include <cerrno>
-#include <cstring>
-
-#if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 #include <zephyr/bluetooth/addr.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/hci_types.h>
-#endif
+
+#include <array>
+#include <cstring>
 
 namespace zest
 {
@@ -23,185 +20,235 @@ BluetoothManager *BluetoothManager::instance_ = nullptr;
 
 BluetoothManager::BluetoothManager() noexcept
 {
-	k_sem_init(&state_changed_, 0, 1);
-	k_mutex_init(&mutex_);
 	if (instance_ != nullptr) {
 		return;
 	}
 	instance_ = this;
 
-#if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	callbacks_.connected = connected_callback;
 	callbacks_.disconnected = disconnected_callback;
 	(void)bt_conn_cb_register(&callbacks_);
-#endif
 }
 
 BluetoothManager::~BluetoothManager() noexcept
 {
-#if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 	if (instance_ == this) {
 		(void)bt_conn_cb_unregister(&callbacks_);
-	}
-#endif
-	if (instance_ == this) {
 		instance_ = nullptr;
 	}
 }
 
-std::expected<void, int> BluetoothManager::enable(std::string_view device_name) noexcept
+bool BluetoothManager::owns_stack() const noexcept
 {
-#if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-	ARG_UNUSED(device_name);
-	return std::unexpected(-ENOTSUP);
-#else
-	if (instance_ != this) {
-		return std::unexpected(-EBUSY);
+	return instance_ == this;
+}
+
+void BluetoothManager::set_state(State state) noexcept
+{
+	atomic_set(&state_, static_cast<atomic_val_t>(state));
+	if (state_handler_) {
+		state_handler_(state);
 	}
-	k_mutex_lock(&mutex_, K_FOREVER);
+	state_changed_.give();
+}
+
+Result<> BluetoothManager::enable(std::string_view device_name) noexcept
+{
+	if (!owns_stack()) {
+		return fail(errors::busy);
+	}
+
+	ScopedLock lock{mutex_};
 	if (!bt_is_ready()) {
-		const int result = bt_enable(nullptr);
-		if (result != 0) {
-			k_mutex_unlock(&mutex_);
-			return std::unexpected(result);
-		}
+		ZEST_TRY(check(bt_enable(nullptr)));
 	}
 
 	if (!device_name.empty()) {
-		std::array<char, 32> name{};
+#if defined(CONFIG_BT_DEVICE_NAME_DYNAMIC)
+		std::array<char, CONFIG_BT_DEVICE_NAME_MAX + 1> name{};
 		if (device_name.size() >= name.size()) {
-			k_mutex_unlock(&mutex_);
-			return std::unexpected(-ENAMETOOLONG);
+			return fail(errors::name_too_long);
 		}
 		std::memcpy(name.data(), device_name.data(), device_name.size());
-		const int result = bt_set_name(name.data());
-		if (result != 0) {
-			k_mutex_unlock(&mutex_);
-			return std::unexpected(result);
-		}
+		ZEST_TRY(check(bt_set_name(name.data())));
+#else
+		/*
+		 * Silently ignoring the name would leave the device advertising
+		 * something else entirely, so say so instead.
+		 */
+		return fail(errors::not_supported);
+#endif
 	}
 
-	atomic_set(&state_, static_cast<atomic_val_t>(State::enabled));
-	k_mutex_unlock(&mutex_);
+	set_state(State::enabled);
 	return {};
-#endif
 }
 
-std::expected<void, int> BluetoothManager::disable() noexcept
+Result<> BluetoothManager::disable() noexcept
 {
-#if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-	return std::unexpected(-ENOTSUP);
-#else
-	if (instance_ != this) {
-		return std::unexpected(-EBUSY);
+	if (!owns_stack()) {
+		return fail(errors::busy);
+	}
+	if (advertising_) {
+		ZEST_TRY(stop_advertising());
 	}
 	if (connected()) {
-		auto result = disconnect();
-		if (!result) {
-			return result;
-		}
+		ZEST_TRY(disconnect());
 	}
 
-	k_mutex_lock(&mutex_, K_FOREVER);
+	ScopedLock lock{mutex_};
 	if (bt_is_ready()) {
-		const int result = bt_disable();
-		if (result != 0) {
-			k_mutex_unlock(&mutex_);
-			return std::unexpected(result);
-		}
+		ZEST_TRY(check(bt_disable()));
 	}
-	atomic_set(&state_, static_cast<atomic_val_t>(State::disabled));
-	k_mutex_unlock(&mutex_);
+	set_state(State::disabled);
+	return {};
+}
+
+Result<> BluetoothManager::start_advertising(const AdvertisingOptions &options) noexcept
+{
+#if !defined(CONFIG_BT_PERIPHERAL)
+	(void)options;
+	return fail(errors::not_supported);
+#else
+	if (!owns_stack() || !bt_is_ready()) {
+		return fail(errors::no_device);
+	}
+	if (options.interval_min <= std::chrono::milliseconds::zero() ||
+	    options.interval_max < options.interval_min) {
+		return fail(errors::invalid_argument);
+	}
+
+	ScopedLock lock{mutex_};
+	if (advertising_) {
+		return {};
+	}
+
+	/* Advertising intervals are in units of 0.625ms. */
+	constexpr std::uint32_t kUnitsPerMillisecond = 1600U / 1000U;
+	bt_le_adv_param params{};
+	params.id = BT_ID_DEFAULT;
+	params.sid = 0U;
+	params.interval_min = static_cast<std::uint32_t>(options.interval_min.count()) * 8U / 5U;
+	params.interval_max = static_cast<std::uint32_t>(options.interval_max.count()) * 8U / 5U;
+	params.options = BT_LE_ADV_OPT_NONE;
+	if (options.connectable) {
+		params.options |= BT_LE_ADV_OPT_CONN;
+	}
+	if (options.include_name) {
+		params.options |= BT_LE_ADV_OPT_USE_NAME;
+	}
+	(void)kUnitsPerMillisecond;
+
+	ZEST_TRY(check(bt_le_adv_start(&params, nullptr, 0U, nullptr, 0U)));
+	advertising_ = true;
+	set_state(State::advertising);
 	return {};
 #endif
 }
 
-std::expected<void, int> BluetoothManager::connect(const Peer &peer,
-						   std::chrono::milliseconds timeout) noexcept
+Result<> BluetoothManager::stop_advertising() noexcept
 {
-#if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-	ARG_UNUSED(peer);
-	ARG_UNUSED(timeout);
-	return std::unexpected(-ENOTSUP);
+#if !defined(CONFIG_BT_PERIPHERAL)
+	return fail(errors::not_supported);
 #else
-	if (instance_ != this || !bt_is_ready()) {
-		return std::unexpected(-ENODEV);
+	if (!advertising_) {
+		return {};
 	}
+	ScopedLock lock{mutex_};
+	ZEST_TRY(check(bt_le_adv_stop()));
+	advertising_ = false;
+	if (!connected()) {
+		set_state(State::enabled);
+	}
+	return {};
+#endif
+}
+
+Result<> BluetoothManager::connect(const Peer &peer, std::chrono::milliseconds timeout) noexcept
+{
+#if !defined(CONFIG_BT_CENTRAL)
+	(void)peer;
+	(void)timeout;
+	return fail(errors::not_supported);
+#else
+	if (!owns_stack()) {
+		return fail(errors::busy);
+	}
+	/* Validate the address before touching the stack. */
 	if (peer.address.size() != 17U) {
-		return std::unexpected(-EINVAL);
+		return fail(errors::invalid_argument);
 	}
 
 	std::array<char, 18> address_text{};
 	std::memcpy(address_text.data(), peer.address.data(), peer.address.size());
 	bt_addr_le_t address{};
 	const char *type = peer.type == AddressType::public_ ? "public" : "random";
-	int result = bt_addr_le_from_str(address_text.data(), type, &address);
-	if (result != 0) {
-		return std::unexpected(result);
+	if (bt_addr_le_from_str(address_text.data(), type, &address) != 0) {
+		return fail(errors::invalid_argument);
+	}
+	if (!bt_is_ready()) {
+		return fail(errors::no_device);
 	}
 
-	k_mutex_lock(&mutex_, K_FOREVER);
+	ScopedLock lock{mutex_};
 	if (connected()) {
-		k_mutex_unlock(&mutex_);
 		return {};
 	}
 
 	const struct bt_conn_le_create_param create_params = BT_CONN_LE_CREATE_PARAM_INIT(
 		BT_CONN_LE_OPT_NONE, BT_GAP_SCAN_FAST_INTERVAL, BT_GAP_SCAN_FAST_INTERVAL);
-	const struct bt_le_conn_param connection_params =
-		BT_LE_CONN_PARAM_INIT(BT_GAP_INIT_CONN_INT_MIN, BT_GAP_INIT_CONN_INT_MAX, 0,
-				      BT_GAP_MS_TO_CONN_TIMEOUT(4000));
+	const struct bt_le_conn_param connection_params = BT_LE_CONN_PARAM_INIT(
+		BT_GAP_INIT_CONN_INT_MIN, BT_GAP_INIT_CONN_INT_MAX, 0, BT_GAP_MS_TO_CONN_TIMEOUT(4000));
 
 	connection_error_ = 0;
-	k_sem_reset(&state_changed_);
-	atomic_set(&state_, static_cast<atomic_val_t>(State::connecting));
-	result = bt_conn_le_create(&address, &create_params, &connection_params, &connection_);
-	if (result != 0) {
-		atomic_set(&state_, static_cast<atomic_val_t>(State::enabled));
-		k_mutex_unlock(&mutex_);
-		return std::unexpected(result);
+	state_changed_.reset();
+	set_state(State::connecting);
+
+	if (const int rc = bt_conn_le_create(&address, &create_params, &connection_params,
+					     &connection_);
+	    rc != 0) {
+		set_state(State::enabled);
+		return fail(rc);
 	}
 
-	result = k_sem_take(&state_changed_, K_MSEC(timeout.count()));
-	if (result != 0) {
+	if (!state_changed_.take(timeout)) {
 		(void)bt_conn_disconnect(connection_, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-		k_mutex_unlock(&mutex_);
-		return std::unexpected(-ETIMEDOUT);
+		/*
+		 * Reset the state on the timeout path. Leaving it latched at
+		 * `connecting` made state() lie until an asynchronous callback
+		 * happened to fire.
+		 */
+		set_state(State::enabled);
+		return fail(errors::timed_out);
 	}
 	if (!connected()) {
 		const int error = connection_error_ != 0 ? connection_error_ : -ECONNREFUSED;
-		k_mutex_unlock(&mutex_);
-		return std::unexpected(error);
+		return fail(error);
 	}
-	k_mutex_unlock(&mutex_);
 	return {};
 #endif
 }
 
-std::expected<void, int> BluetoothManager::disconnect() noexcept
+Result<> BluetoothManager::disconnect() noexcept
 {
-#if !defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
-	return std::unexpected(-ENOTSUP);
-#else
-	if (instance_ != this || connection_ == nullptr) {
-		return std::unexpected(-ENOTCONN);
+	if (!owns_stack()) {
+		return fail(errors::busy);
 	}
 
-	k_mutex_lock(&mutex_, K_FOREVER);
-	k_sem_reset(&state_changed_);
-	atomic_set(&state_, static_cast<atomic_val_t>(State::disconnecting));
-	const int result = bt_conn_disconnect(connection_, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-	if (result != 0) {
-		k_mutex_unlock(&mutex_);
-		return std::unexpected(result);
+	/* Test the connection under the lock: the stack clears it from its own context. */
+	ScopedLock lock{mutex_};
+	if (connection_ == nullptr) {
+		return fail(errors::not_connected);
 	}
-	const int wait_result = k_sem_take(&state_changed_, K_SECONDS(10));
-	k_mutex_unlock(&mutex_);
-	if (wait_result != 0) {
-		return std::unexpected(-ETIMEDOUT);
+
+	state_changed_.reset();
+	set_state(State::disconnecting);
+	ZEST_TRY(check(bt_conn_disconnect(connection_, BT_HCI_ERR_REMOTE_USER_TERM_CONN)));
+
+	if (!state_changed_.take(std::chrono::seconds{10})) {
+		return fail(errors::timed_out);
 	}
 	return {};
-#endif
 }
 
 BluetoothManager::State BluetoothManager::state() const noexcept
@@ -209,21 +256,29 @@ BluetoothManager::State BluetoothManager::state() const noexcept
 	return static_cast<State>(atomic_get(&state_));
 }
 
-#if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 void BluetoothManager::connected_callback(struct bt_conn *connection, std::uint8_t error) noexcept
 {
-	if (instance_ == nullptr || connection != instance_->connection_) {
+	if (instance_ == nullptr) {
+		return;
+	}
+	/* A peripheral learns of its connection here, without having created it. */
+	if (instance_->connection_ == nullptr && error == 0U) {
+		instance_->connection_ = bt_conn_ref(connection);
+		instance_->advertising_ = false;
+		instance_->set_state(State::connected);
+		return;
+	}
+	if (connection != instance_->connection_) {
 		return;
 	}
 	if (error == 0U) {
-		atomic_set(&instance_->state_, static_cast<atomic_val_t>(State::connected));
+		instance_->set_state(State::connected);
 	} else {
 		instance_->connection_error_ = -static_cast<int>(error);
-		atomic_set(&instance_->state_, static_cast<atomic_val_t>(State::enabled));
 		bt_conn_unref(instance_->connection_);
 		instance_->connection_ = nullptr;
+		instance_->set_state(State::enabled);
 	}
-	k_sem_give(&instance_->state_changed_);
 }
 
 void BluetoothManager::disconnected_callback(struct bt_conn *connection,
@@ -235,10 +290,8 @@ void BluetoothManager::disconnected_callback(struct bt_conn *connection,
 	}
 	bt_conn_unref(instance_->connection_);
 	instance_->connection_ = nullptr;
-	atomic_set(&instance_->state_, static_cast<atomic_val_t>(State::enabled));
-	k_sem_give(&instance_->state_changed_);
+	instance_->set_state(State::enabled);
 }
-#endif
 
 const char *to_string(BluetoothManager::State state) noexcept
 {
@@ -247,6 +300,8 @@ const char *to_string(BluetoothManager::State state) noexcept
 		return "disabled";
 	case BluetoothManager::State::enabled:
 		return "enabled";
+	case BluetoothManager::State::advertising:
+		return "advertising";
 	case BluetoothManager::State::connecting:
 		return "connecting";
 	case BluetoothManager::State::connected:
@@ -257,4 +312,4 @@ const char *to_string(BluetoothManager::State state) noexcept
 	return "unknown";
 }
 
-} // namespace zest
+} /* namespace zest */
