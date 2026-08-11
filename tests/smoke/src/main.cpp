@@ -254,6 +254,25 @@ ZTEST(zest_smoke, test_sleep_for_sub_millisecond)
 	zassert_true(zest::uptime() >= before);
 }
 
+ZTEST(zest_smoke, test_uptime_clock_drives_the_timing_helpers)
+{
+	static_assert(zest::UptimeClock::is_steady);
+	static_assert(std::is_same_v<zest::UptimeClock::duration, std::chrono::milliseconds>);
+
+	const auto before = zest::UptimeClock::now();
+	zest::sleep_for(5ms);
+	zassert_true(zest::UptimeClock::now() > before);
+
+	/*
+	 * The point of the clock: the argument-less overloads work without
+	 * linking libstdc++'s std::chrono, which needs a gettimeofday most
+	 * Zephyr builds do not have.
+	 */
+	zest::RateLimiter<zest::UptimeClock> limiter{1h};
+	zassert_true(limiter.allow());
+	zassert_false(limiter.allow());
+}
+
 /* ------------------------------------------------------------ ring buffer --- */
 
 ZTEST(zest_smoke, test_ring_buffer)

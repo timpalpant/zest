@@ -36,11 +36,6 @@ constexpr std::size_t max_url_length = 512;
 constexpr std::size_t max_host_length = 253;
 constexpr std::size_t max_path_length = max_url_length - 128;
 
-[[nodiscard]] HttpError error_at(HttpErrorStage stage, int code) noexcept
-{
-	return HttpError{stage, Error{code}};
-}
-
 [[nodiscard]] HttpError error_at(HttpErrorStage stage, Error cause) noexcept
 {
 	return HttpError{stage, cause};

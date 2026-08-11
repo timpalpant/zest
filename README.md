@@ -38,7 +38,7 @@ part has a double-precision FPU.
 | Buffers | `SpscRingBuffer`, `MessageQueue` |
 | Serialization | `Schema`, `Format`, `serialize`, `deserialize`, `json::`, `cbor::` |
 | Callables | `FunctionRef`, `InplaceFunction` |
-| Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()` |
+| Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()`, `UptimeClock` |
 | Persistence | `Settings`, `ProvisioningManager`, `RetainedValue` |
 | Networking | `DnsResolver`, `UdpSocket`, `TcpSocket`, `Poller`, `SntpClient`, `TimeSynchronizer`, `MqttClient`, `NetworkMonitor`, `WifiManager`, `HttpClient` |
 | Security | `StaticCredential`, `OwnedCredential` |
@@ -464,6 +464,23 @@ through `Result<T>`.
 Platform configuration remains outside the library. Network pools, TLS algorithms
 and credentials, DHCP policy, Wi-Fi drivers, Bluetooth controllers, and
 devicetree wiring belong to the application and board.
+
+The helpers that take a `Clock` template parameter -- `RateLimiter`, `Debouncer`,
+`Button`, `LedPatternPlayer`, `PeriodicSampler` -- all accept a caller-supplied
+time point, and that overload is the one to prefer when the calling code already
+knows what time it is. For the argument-less overloads, pass `zest::UptimeClock`
+rather than taking the `std::chrono::steady_clock` default:
+
+```cpp
+zest::RateLimiter<zest::UptimeClock> warnings{5s};
+```
+
+libstdc++ keeps `steady_clock::now()` and `system_clock::now()` in one object
+file, so calling either one links both, and `system_clock::now()` needs a
+`gettimeofday` that most Zephyr configurations do not provide. The failure
+arrives at link time, names a function nobody called, and points at an object
+nobody asked for. `UptimeClock` reads `k_uptime_get()` and links everywhere. The
+default is left alone so the headers stay host-testable.
 
 See [DESIGN.md](DESIGN.md) for the architectural layers, the relationship with
 zpp, and the thread-safety contracts.

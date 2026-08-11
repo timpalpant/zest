@@ -68,6 +68,32 @@ template <typename Rep, typename Period>
 }
 
 /**
+ * `uptime()` dressed as a standard clock, for the helpers in this library that
+ * take a `Clock` template parameter.
+ *
+ * Prefer this over `std::chrono::steady_clock` on Zephyr. libstdc++ keeps both
+ * standard clocks in one object file, so a single call to `steady_clock::now()`
+ * drags in `system_clock::now()` too -- and that one calls `gettimeofday`, which
+ * most Zephyr configurations do not provide. The result is a link failure that
+ * names a function nobody called, from an object nobody asked for. This clock
+ * reads the kernel's counter directly and links everywhere.
+ */
+struct UptimeClock {
+	using rep = std::int64_t;
+	using period = std::milli;
+	using duration = std::chrono::milliseconds;
+	using time_point = std::chrono::time_point<UptimeClock, duration>;
+
+	/** The counter is monotonic: it does not step for wall-clock corrections. */
+	static constexpr bool is_steady = true;
+
+	[[nodiscard]] static time_point now() noexcept
+	{
+		return time_point{uptime()};
+	}
+};
+
+/**
  * Sleep the calling thread.
  *
  * Sub-millisecond requests go through `k_usleep`, so `sleep_for(250us)` actually
