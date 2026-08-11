@@ -12,8 +12,30 @@
 #include <expected>
 #include <span>
 
+/**
+ * @file
+ * @brief Battery voltage measurement and state-of-charge estimation.
+ *
+ * The two halves stay distinct because they fail differently. A discharge curve
+ * is a constant of the design, validated once --- at compile time for a literal
+ * --- after which `percent_at()` only interpolates and cannot fail. Reading the
+ * cell, by contrast, is I/O that fails per call. Fusing them would force every
+ * charge estimate to handle curve errors that a valid literal can never produce.
+ *
+ * ```text
+ * AdcChannel -> VoltageDivider -> BatteryMonitor -> BatteryCurve::percent_at()
+ * ```
+ *
+ * The curve half is pure integer arithmetic with no dependency at all, so it is
+ * always available and is exercised by the host test suite. `BatteryMonitor`
+ * needs Zephyr's ADC driver API and so is declared only under
+ * `CONFIG_ZEST_BATTERY_MONITOR=y`.
+ */
+
 namespace zest
 {
+
+/* ------------------------------------------------------- discharge curve --- */
 
 /** One point on a battery discharge curve. */
 struct CurvePoint {
@@ -215,3 +237,81 @@ estimate_charge_percent(std::int32_t millivolts, std::span<const CurvePoint> cur
 }
 
 } /* namespace zest */
+
+/* ----------------------------------------------------------- measurement --- */
+
+/*
+ * Everything above is Zephyr-independent, so the host test suite can exercise
+ * the curve arithmetic directly, and a build that only needs a curve pulls in no
+ * driver headers. BatteryMonitor reaches the ADC, so it appears only when its
+ * Kconfig option is on --- which is also exactly when the ADC dependencies it
+ * includes below are guaranteed present, since ZEST_BATTERY_MONITOR depends on
+ * ADC and selects ZEST_ADC_CHANNEL.
+ */
+#if defined(CONFIG_ZEST_BATTERY_MONITOR)
+
+#include <zest/error.hpp>
+#include <zest/units.hpp>
+#include <zest/voltage_divider.hpp>
+
+namespace zest
+{
+
+/**
+ * Reads battery voltage through a resistive divider.
+ *
+ * The divider ratio is given as the two resistances from the devicetree
+ * `voltage-divider` node. Pair a reading with a `BatteryCurve` above to turn it
+ * into a charge estimate.
+ *
+ * Requires `CONFIG_ZEST_BATTERY_MONITOR=y`.
+ */
+class BatteryMonitor
+{
+      public:
+	/** Number of ADC conversions averaged into one reading by default. */
+	static constexpr std::size_t kDefaultOversample = 16U;
+
+	constexpr BatteryMonitor(adc_dt_spec channel, Ohms measured, Ohms full,
+				 std::size_t oversample = kDefaultOversample) noexcept
+		: divider_{channel, measured, full}, oversample_{oversample == 0U ? 1U : oversample}
+	{
+	}
+
+	constexpr BatteryMonitor(adc_dt_spec channel, std::int32_t output_ohms,
+				 std::int32_t full_ohms,
+				 std::size_t oversample = kDefaultOversample) noexcept
+		: divider_{channel, output_ohms, full_ohms},
+		  oversample_{oversample == 0U ? 1U : oversample}
+	{
+	}
+
+	/** Configure the ADC channel. Call once before read_millivolts(). */
+	[[nodiscard]] Result<> init() const noexcept
+	{
+		return divider_.init();
+	}
+
+	/** Sample the battery, averaging the configured number of conversions. */
+	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
+	{
+		return divider_.read_average_millivolts(oversample_);
+	}
+
+	[[nodiscard]] constexpr const VoltageDivider &divider() const noexcept
+	{
+		return divider_;
+	}
+	[[nodiscard]] constexpr std::size_t oversample() const noexcept
+	{
+		return oversample_;
+	}
+
+      private:
+	VoltageDivider divider_;
+	std::size_t oversample_;
+};
+
+} /* namespace zest */
+
+#endif /* CONFIG_ZEST_BATTERY_MONITOR */

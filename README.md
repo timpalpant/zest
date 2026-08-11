@@ -31,7 +31,7 @@ part has a double-precision FPU.
 | Transforms | `Calibration`, `IntegerCalibration`, `LinearMap`, `integer_map` |
 | Control | `PidController`, `SlewRateLimiter`, `slew_toward`, `StateMachine` |
 | Timing and policy | `RateLimiter`, `Debouncer`, `RetryPolicy`, `ExponentialBackoff` |
-| Battery | `BatteryMonitor`, `BatteryCurve`, `battery_curve()` |
+| Battery | `BatteryMonitor`, `BatteryCurve`, `battery_curve()` (all in `zest/battery.hpp`) |
 | Buses | `I2cDevice`, `SpiDevice`, `Uart` |
 | Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler` |
 | Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
@@ -185,9 +185,12 @@ on most SoCs.
 
 ### Battery
 
+Measurement and charge estimation live in one header but stay separate types,
+because they fail differently: a curve is a constant of the design, checked once,
+while reading the cell is I/O that fails per call.
+
 ```cpp
-#include <zest/battery_curve.hpp>
-#include <zest/battery_monitor.hpp>
+#include <zest/battery.hpp>
 
 // Validated at compile time: a malformed curve fails the build.
 constexpr auto discharge = zest::battery_curve(std::array{
@@ -209,6 +212,9 @@ zest::Result<std::uint8_t> charge() noexcept
     return discharge.percent_at(millivolts.count());  // cannot fail
 }
 ```
+
+`BatteryMonitor` needs `CONFIG_ZEST_BATTERY_MONITOR=y`; the curve half is plain
+arithmetic on no dependency, so it is always available and is host-tested.
 
 ### Control
 

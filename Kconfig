@@ -176,8 +176,10 @@ config ZEST_BATTERY_MONITOR
 	depends on ADC
 	select ZEST_ADC_CHANNEL
 	help
-	  ADC-backed battery voltage monitor with a separate discharge-curve
-	  helper.
+	  ADC-backed battery voltage monitor, in zest/battery.hpp.
+
+	  The discharge-curve half of that header needs no Kconfig option and no
+	  Zephyr facility; this option adds BatteryMonitor on top of it.
 
 config ZEST_HTTP_CLIENT
 	bool "HttpClient"

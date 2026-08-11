@@ -6,7 +6,7 @@
 
 #include "check.hpp"
 
-#include <zest/battery_curve.hpp>
+#include <zest/battery.hpp>
 
 #include <array>
 
@@ -79,5 +79,5 @@ int main()
 	CHECK(!rejected.has_value());
 	CHECK(std::string_view{to_string(CurveError::invalid_voltage_order)}.size() > 0U);
 
-	return zest::test::summary("battery_curve");
+	return zest::test::summary("battery");
 }

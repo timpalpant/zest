@@ -158,14 +158,26 @@ for N samples instead of N times, with a fallback for drivers that decline
 multi-sampling.
 
 `VoltageDivider` is the reusable adaptor between `AdcChannel` and
-`BatteryMonitor`; charge estimation is separate, via `BatteryCurve`:
+`BatteryMonitor`. It stays its own header because reconstructing an input voltage
+from a divider is not battery-specific.
 
 ```text
 AdcChannel -> VoltageDivider -> BatteryMonitor -> BatteryCurve::percent_at()
 ```
 
+`zest/battery.hpp` holds both halves of the battery layer, but they remain
+separate types because they fail differently. A discharge curve is a constant of
+the design, validated once; reading the cell is I/O that fails per call. Fusing
+them would force every charge estimate to handle three `CurveError` cases a valid
+literal can never produce.
+
 `battery_curve()` is `consteval`, so a malformed literal curve fails the build
 rather than becoming a runtime error nobody handles. `percent_at()` cannot fail.
+
+The curve half depends on nothing — not even Zephyr — so it is exercised by the
+host test suite and costs a curve-only image no driver headers. `BatteryMonitor`
+is therefore declared under `CONFIG_ZEST_BATTERY_MONITOR`, which is exactly when
+the ADC dependencies it pulls in are guaranteed present.
 
 ## 6. GPIO
 

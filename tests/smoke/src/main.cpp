@@ -30,13 +30,11 @@
 #include <zest/transforms.hpp>
 #include <zest/units.hpp>
 
+#include <zest/battery.hpp>
+
 #if defined(CONFIG_ZEST_ADC_CHANNEL)
 #include <zest/adc_channel.hpp>
-#include <zest/battery_curve.hpp>
 #include <zest/voltage_divider.hpp>
-#endif
-#if defined(CONFIG_ZEST_BATTERY_MONITOR)
-#include <zest/battery_monitor.hpp>
 #endif
 #if defined(CONFIG_ZEST_GPIO)
 #include <zest/gpio.hpp>

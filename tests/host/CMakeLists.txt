@@ -33,7 +33,7 @@ set(ZEST_HOST_TESTS
   transforms
   timing
   retry
-  battery_curve
+  battery
   units
   control
   ring_buffer
