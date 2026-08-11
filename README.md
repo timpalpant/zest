@@ -36,7 +36,7 @@ part has a double-precision FPU.
 | Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler` |
 | Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
 | Buffers | `SpscRingBuffer`, `MessageQueue` |
-| Telemetry | `CborWriter`, `json::Schema`, `json::encode`, `json::parse` |
+| Serialization | `Schema`, `Format`, `serialize`, `deserialize`, `json::`, `cbor::` |
 | Callables | `FunctionRef`, `InplaceFunction` |
 | Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()` |
 | Persistence | `Settings`, `ProvisioningManager`, `RetainedValue` |
@@ -327,78 +327,70 @@ it into RAM; `OwnedCredential<N>` copies, for a credential that arrives at run
 time. Certificate validation also needs a valid system clock, which
 `TimeSynchronizer` can set.
 
-### JSON
+### Serialization
 
-A schema names fields; the JSON token for each one is deduced from its C++ type,
-so `JSON_TOK_*` never appears in application code:
+A schema names fields once; the wire representation of each is deduced from its
+C++ type, and the *format* is a separate choice. The same schema drives JSON and
+CBOR:
 
 ```cpp
-#include <zest/json.hpp>
+#include <zest/serde.hpp>
 
 struct Reading {
     std::int32_t millivolts;
     std::int32_t centi_celsius;
     bool charging;
-    char label[16];          // copied out of the buffer
+    char label[16];          // copied, not borrowed
 };
 
-ZEST_JSON_SCHEMA(Reading,
-                 ZEST_JSON_FIELD(Reading, millivolts, "mv"),
-                 ZEST_JSON_FIELD(Reading, centi_celsius, "cc"),
-                 ZEST_JSON_MEMBER(Reading, charging),   // JSON name "charging"
-                 ZEST_JSON_MEMBER(Reading, label));
+ZEST_SCHEMA(Reading,
+            ZEST_FIELD(Reading, millivolts, "mv"),
+            ZEST_FIELD(Reading, centi_celsius, "cc"),
+            ZEST_MEMBER(Reading, charging),   // wire name defaults to the member
+            ZEST_MEMBER(Reading, label));
 ```
 
-Publishing over MQTT, or posting over HTTP:
+Pick a format at the call site, or pin one for the build:
 
 ```cpp
-std::array<char, 128> text{};
-ZEST_TRY_ASSIGN(json, zest::json::encode(reading, text));
-ZEST_TRY(client.publish("sensor/1", json));            // string_view overload
+constexpr auto kFormat = zest::Format::cbor;
 
-std::array<std::byte, 128> bytes{};
-ZEST_TRY_ASSIGN(body, zest::json::encode(reading, bytes));
-ZEST_TRY_ASSIGN(response, http.post("https://api.example.com/v1/readings", body,
-                                    response_buffer, "application/json"));
-```
+std::array<std::byte, 128> buffer{};
+ZEST_TRY_ASSIGN(body, zest::serialize<kFormat>(reading, buffer));
+ZEST_TRY(client.publish("sensor/1", body));
 
-Parsing a response body. The buffer you passed to `HttpClient` is writable, which
-is what parsing needs:
-
-```cpp
-ZEST_TRY_ASSIGN(parsed,
-                zest::json::parse<Reading>(response_buffer.first(response->body.size())));
-
+ZEST_TRY_ASSIGN(parsed, zest::deserialize<kFormat, Reading>(payload));
 if (parsed.has("cc")) {                 // absent and zero are different things
     use(parsed->centi_celsius);
 }
 ```
 
-Nested objects and arrays compose from their members' own schemas:
+Both codecs delegate to the library Zephyr already ships — Zephyr's JSON library
+and zcbor — so no serialization logic is duplicated. Nested objects and arrays
+compose from their members' own schemas, and an incoming key with no matching
+field is skipped by both, so a sender adding fields will not break a receiver.
 
-```cpp
-struct Batch {
-    Reading readings[8];
-    std::size_t readings_count;         // Zephyr reports the decoded length here
-};
-ZEST_JSON_SCHEMA(Batch, ZEST_JSON_ARRAY(Batch, readings, readings_count));
+A field left out of the schema is simply not part of the mapping: never written,
+never populated. That is a compile-time choice covering all values — neither
+format supports per-value omission the way Go's `omitempty` does.
 
-ZEST_TRY_ASSIGN(batch, zest::json::parse_array<Batch>(body));   // [{...},{...}]
-```
+**The two formats are not equivalent**, and where they differ CBOR is better
+behaved:
 
-Four constraints come from Zephyr's JSON library rather than from this wrapper,
-and they are worth knowing before you design a payload:
+| | JSON | CBOR |
+| --- | --- | --- |
+| Payload size | roughly 2× | baseline |
+| Decoding modifies the input buffer | yes, writes NULs | no |
+| `char *` members decode | yes, borrowing the buffer | no — use `char[N]` |
+| Arrays of objects | yes | no, rejected at compile time |
+| Unknown incoming keys | skipped | skipped |
 
-- **Parsing rewrites the buffer** in place and a `const char *` member points
-  *into* it. Use `char[N]` when the value must outlive the buffer.
-- **Every schema field is always encoded.** There is no way to omit one, so
-  optional output needs a sentinel or a second schema.
-- **Members must be C-compatible**: no `std::string_view`, `std::optional` or
-  `std::span`. Use `char[N]`, a sentinel, and an array plus a `std::size_t` count.
-- `float` and `double` members need `CONFIG_JSON_LIBRARY_FP_SUPPORT=y`.
+Prefer CBOR where both ends are yours; JSON is for interoperating with something
+that expects it. `zest::content_type(format)` gives the matching HTTP media type.
 
-`CborWriter` remains the better choice where both ends are yours: it is roughly
-half the bytes, needs no schema, and does support `std::optional` omission.
+Requires `CONFIG_ZEST_JSON=y` with `CONFIG_JSON_LIBRARY=y`, and/or
+`CONFIG_ZEST_CBOR=y` with `CONFIG_ZCBOR=y`. `float` and `double` members need
+`CONFIG_JSON_LIBRARY_FP_SUPPORT=y` for the JSON codec.
 
 ### Callbacks
 

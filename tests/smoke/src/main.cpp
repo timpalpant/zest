@@ -18,7 +18,6 @@
 #include <zest/version.hpp>
 
 /* Always available. */
-#include <zest/cbor.hpp>
 #include <zest/control.hpp>
 #include <zest/error.hpp>
 #include <zest/filters.hpp>
@@ -702,22 +701,3 @@ ZTEST(zest_smoke, test_uart_surface)
 	port.flush_input();
 }
 #endif
-
-ZTEST(zest_smoke, test_cbor_encodes_telemetry)
-{
-	zest::CborWriter<64> writer;
-	zassert_true(writer.begin_map(2).has_value());
-	zassert_true(writer.add_text("mv").has_value());
-	zassert_true(writer.add_int(3742).has_value());
-	zassert_true(writer.add_text("ok").has_value());
-	zassert_true(writer.add_bool(true).has_value());
-	zassert_false(writer.overflowed());
-	zassert_true(writer.size() > 0U);
-
-	/* Overflow is reported and sticky, and withholds the partial document. */
-	zest::CborWriter<2> tiny;
-	zassert_true(tiny.add_uint(24).has_value());
-	zassert_equal(tiny.add_uint(0).error(), zest::errors::no_buffer_space);
-	zassert_true(tiny.overflowed());
-	zassert_true(tiny.bytes().empty());
-}

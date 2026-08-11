@@ -39,7 +39,7 @@ set(ZEST_HOST_TESTS
   ring_buffer
   function
   sample_store
-  cbor
+
 )
 
 foreach(name IN LISTS ZEST_HOST_TESTS)

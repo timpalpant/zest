@@ -50,15 +50,24 @@ config ZEST_PWM_OUTPUT
 	  Typed PWM output, dimmable and RGB LEDs, servo, and buzzer helpers.
 
 config ZEST_JSON
-	bool "Schema-driven JSON"
+	bool "JSON codec"
 	depends on JSON_LIBRARY
 	help
-	  Map C++ structs to JSON through Zephyr's descriptor-based JSON library.
-	  Tokens are deduced from member types, so JSON_TOK_* never appears in
-	  application code, and nested objects and arrays compose from their own
-	  schemas.
+	  Serialize structs to and from JSON through Zephyr's JSON library, driven
+	  by a ZEST_SCHEMA declaration.
 
 	  Enable CONFIG_JSON_LIBRARY_FP_SUPPORT for float or double members.
+
+config ZEST_CBOR
+	bool "CBOR codec"
+	depends on ZCBOR
+	help
+	  Serialize structs to and from CBOR through zcbor, driven by the same
+	  ZEST_SCHEMA declaration the JSON codec uses.
+
+	  CBOR is roughly half the size of the equivalent JSON, decoding does not
+	  modify the input buffer, and nothing depends on NUL termination. Prefer it
+	  where both ends of the link are yours.
 
 config ZEST_I2C
 	bool "I2cDevice"
