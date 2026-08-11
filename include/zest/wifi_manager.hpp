@@ -74,9 +74,6 @@ class WifiManager
 		/**
 		 * Security mode. `open` with a password, or `psk` without one, is
 		 * rejected rather than silently reinterpreted.
-		 *
-		 * WPA3-SAE is increasingly mandatory on new networks and was
-		 * previously unreachable: only open and PSK existed.
 		 */
 		WifiSecurity security{WifiSecurity::psk};
 		WifiBand band{WifiBand::any};
@@ -88,8 +85,8 @@ class WifiManager
 	/**
 	 * Interface addresses and radio status.
 	 *
-	 * Address fields are sized for IPv6 and exposed as views, so printing one no
-	 * longer requires the caller to know they are raw arrays.
+	 * Address fields are sized for IPv6 and exposed as views, so they can be
+	 * printed directly.
 	 */
 	struct ConnectionInfo {
 		State state{State::disconnected};
@@ -161,9 +158,6 @@ class WifiManager
 
 	/**
 	 * Scan for access points, filling @p results and returning the ones found.
-	 *
-	 * Needed by any provisioning flow that lists networks for a user to pick
-	 * from, which was previously impossible through this class.
 	 */
 	[[nodiscard]] Result<std::span<const WifiScanResult>>
 	scan(std::span<WifiScanResult> results,

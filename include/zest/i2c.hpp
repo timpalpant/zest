@@ -21,10 +21,9 @@ namespace zest
 /**
  * A devicetree-configured I2C peripheral.
  *
- * Every sensing project ends up with one part that has no Zephyr driver, and then
- * needs raw register access. This is that access, with the same conventions as
- * the rest of the library: spans instead of pointer-and-length, `Result` instead
- * of errno, and no allocation.
+ * Raw register access for a part with no Zephyr driver, following the library's
+ * conventions: spans instead of pointer-and-length, `Result` instead of errno,
+ * and no allocation.
  *
  * ```cpp
  * constexpr zest::I2cDevice sensor{I2C_DT_SPEC_GET(DT_NODELABEL(my_sensor))};

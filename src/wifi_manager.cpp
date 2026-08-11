@@ -276,11 +276,11 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 			return fail(rc);
 		}
 
-		const bool signalled = state_changed_.take(remaining).has_value();
+		const bool signaled = state_changed_.take(remaining).has_value();
 		if (connected()) {
 			return status();
 		}
-		if (!signalled) {
+		if (!signaled) {
 			set_state(State::disconnected);
 			return fail(errors::timed_out);
 		}

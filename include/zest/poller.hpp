@@ -41,10 +41,9 @@ enum class PollEvent : std::uint16_t {
 /**
  * Wait on several sockets at once, with fixed storage.
  *
- * An event loop that owns an MQTT connection, a UDP listener and a control socket
- * needs one blocking call that covers all of them; without this it either polls
- * each in turn with a short timeout, which wastes power, or reaches for
- * `zsock_poll` directly and hand-manages the descriptor array.
+ * One blocking call covers every socket an event loop owns --- an MQTT
+ * connection, a UDP listener, a control socket --- so none of them needs polling
+ * in turn with a short timeout.
  *
  * ```cpp
  * zest::Poller<3> poller;

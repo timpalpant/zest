@@ -38,12 +38,10 @@ template <typename T, std::size_t N> struct is_view<std::span<T, N>>: std::true_
 /**
  * A type whose object representation can be persisted byte for byte.
  *
- * Trivial copyability alone is not enough. `std::string_view` is trivially
- * copyable, so an unconstrained overload happily wrote a *pointer and a length*
- * to flash for `set(key, std::string_view{ssid})` --- a call that looks exactly
- * like the intended one and reads back as a dangling view after reboot. Pointers,
- * references, arrays and view types are rejected here, and the string overloads
- * below give those call sites the behaviour they meant.
+ * Trivial copyability alone is not enough: a `std::string_view` is trivially
+ * copyable, but persisting its bytes stores a pointer and a length that read back
+ * dangling. Pointers, references, arrays and view types are rejected here; the
+ * string overloads below persist the characters instead.
  *
  * This cannot detect a pointer nested inside a struct, so a persisted aggregate
  * must still hold only values. Prefer an explicit versioned record for anything

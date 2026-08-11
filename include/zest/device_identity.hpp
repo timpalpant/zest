@@ -45,10 +45,8 @@ class DeviceIdentity
 	/**
 	 * Read the device identifier into @p destination.
 	 *
-	 * Returns a view of exactly the bytes the SoC provided. The previous
-	 * fixed-array form zero-padded short identifiers with no way to tell
-	 * padding from data, which made two devices with different-length IDs
-	 * indistinguishable.
+	 * The returned view covers exactly the bytes the SoC provided, with no
+	 * padding, so identifiers of different lengths stay distinguishable.
 	 */
 	[[nodiscard]] static Result<std::span<const std::byte>>
 	read(std::span<std::byte> destination) noexcept;

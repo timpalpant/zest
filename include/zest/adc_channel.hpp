@@ -21,9 +21,9 @@ namespace zest
 /**
  * A devicetree-configured ADC channel.
  *
- * Sample width follows the channel's configured resolution. An earlier version
- * hard-coded a 16-bit signed buffer, which truncates on 18- and 24-bit parts and
- * reads negative for a single-ended value above 0x7FFF.
+ * Sample width follows the channel's configured resolution, so 18- and 24-bit
+ * parts read correctly and an unsigned 16-bit value above `0x7FFF` does not come
+ * back negative.
  */
 class AdcChannel
 {

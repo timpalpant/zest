@@ -17,13 +17,10 @@ namespace zest
 /**
  * A physical quantity carrying its unit and scale in the type.
  *
- * Sensing code is full of bare `std::int32_t` millivolts, milliamps and
- * milli-degrees, and mixing them up is the classic bug of the domain: a divider
- * ratio applied to volts instead of millivolts, or a threshold in degrees
- * compared against a reading in thousandths. `Quantity` follows the pattern
- * `std::chrono::duration` already proves works --- a representation, a tag that
- * says *what* is measured, and a `std::ratio` that says at what scale --- so
- * those mistakes stop compiling.
+ * A representation, a tag saying *what* is measured, and a `std::ratio` saying at
+ * what scale --- the same shape as `std::chrono::duration`. Mixing millivolts with
+ * volts, or degrees with thousandths, stops compiling rather than producing a
+ * reading that is wrong by a factor of a thousand.
  *
  * Conversions that cannot lose information are implicit; the rest need an
  * explicit `quantity_cast`, exactly as with `std::chrono`:

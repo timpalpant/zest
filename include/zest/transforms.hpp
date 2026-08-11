@@ -32,10 +32,9 @@ enum class TransformError {
 /**
  * Apply a gain and offset calibration to arithmetic samples.
  *
- * The arithmetic type defaults to `float`, not `double`: no common Cortex-M part
- * has a double-precision FPU, so `double` here becomes a soft-float call in what
- * is usually a per-sample path. Prefer `IntegerCalibration` when the gain can be
- * expressed as a ratio.
+ * The arithmetic type defaults to `float`, since `double` becomes a soft-float
+ * call on a part with no double-precision FPU. Prefer `IntegerCalibration` when
+ * the gain can be expressed as a ratio.
  */
 template <typename T, typename Real = float>
 	requires std::is_arithmetic_v<T> && std::floating_point<Real>

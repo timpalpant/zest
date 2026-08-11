@@ -26,9 +26,7 @@ namespace zest
  *
  * `Error` covers the errno domain and nothing else. Failures that are not errno
  * values keep their own types, so they can never be confused with one --- see
- * `DnsError`, `CurveError`, `TransformError` and `HttpError`. This matters
- * concretely: Zephyr's `DNS_EAI_NONAME` is `-2`, which as an errno would read as
- * `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`, which would read as `-ENOMEM`.
+ * `DnsError`, `CurveError`, `TransformError` and `HttpError`.
  */
 class Error
 {

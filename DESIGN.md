@@ -25,8 +25,8 @@ Zest complements zpp **without depending on it**:
   primitives, and application services.
 - Zest does not attempt to replace the standard library with a broad
   kernel-primitives layer. Its kernel helpers are the fixed-storage building
-  blocks the higher layers need, plus the few primitives whose absence forced
-  application code back to the C API.
+  blocks the higher layers need, plus the few primitives an application would
+  otherwise reach into the C API for.
 - Zest uses the C++23 standard library directly where the configured toolchain
   provides it, including `std::expected`, `std::span`, and `std::chrono`.
 - Public wrappers expose native Zephyr handles where that materially improves
@@ -85,8 +85,8 @@ in:
 | `HttpError` | A request stage plus its `Error` cause |
 
 Keeping DNS separate is not cosmetic: `DNS_EAI_NONAME` is `-2`, which as an errno
-reads as `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`, which reads as `-ENOMEM`.
-Returning them as a bare `int` made the two indistinguishable.
+reads as `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`, which reads as `-ENOMEM`. As a
+bare `int` the two domains are indistinguishable.
 
 `check()`, `check_value()` and `check_positive()` translate the
 `rc < 0 ? error : value` shape that nearly every Zephyr call has, and `ZEST_TRY` /
@@ -110,9 +110,8 @@ onto a part without an FPU.
 a call. `InplaceFunction<Sig, N>` owns a callable in fixed inline storage.
 
 Both exist because `void (*)(void *)` plus a context argument does not accept a
-lambda that captures, which forced application code to write static trampolines
-and cast context pointers by hand — precisely the boilerplate this library exists
-to remove. `WorkItem`, `DelayableWorkItem`, `StaticThread`, `MqttClient`,
+lambda that captures, leaving static trampolines and hand-cast context pointers as
+the only option. `WorkItem`, `DelayableWorkItem`, `StaticThread`, `MqttClient`,
 `WifiManager` and `BluetoothManager` all take capturing lambdas, and none of them
 allocate.
 
@@ -182,12 +181,12 @@ the ADC dependencies it pulls in are guaranteed present.
 ## 6. GPIO
 
 `GpioOutput` tracks the last state it drove, so `state()` is exact and
-infallible. This replaces reading the pin back: Zephyr documents
-`gpio_pin_get_dt()` for *input* pins, and a pin configured `GPIO_OUTPUT_*` has its
-input buffer disabled on most SoCs, so the read returned a driver constant dressed
-up as a `GpioState`.
+infallible. It does not read the pin back: Zephyr documents `gpio_pin_get_dt()`
+for *input* pins, and a pin configured `GPIO_OUTPUT_*` has its input buffer
+disabled on most SoCs, so the read returns a driver constant dressed up as a
+`GpioState`.
 
-`read_pin()` remains for cases where the electrical level genuinely matters, and
+`read_pin()` covers the cases where the electrical level genuinely matters, and
 refuses unless `init(state, /* enable_readback = */ true)` configured for it.
 
 Because the object carries state, `set()` and `toggle()` are non-const.
@@ -221,20 +220,20 @@ application-provided context and mempool.
 
 `SpscRingBuffer<T, N>` is a lock-free ring for exactly one producer and one
 consumer. It is what a sampling callback pushes into and a worker drains:
-`MessageQueue` is a kernel synchronisation primitive that can block, wakes a
+`MessageQueue` is a kernel synchronization primitive that can block, wakes a
 waiter per message, and cannot be inspected without removing, which makes it the
 wrong tool for buffering a sample stream.
 
 `push_overwrite()` and `clear()` touch both ends, so they require the two sides to
-be the same context or externally synchronised. `try_push()`, `try_pop()`,
+be the same context or externally synchronized. `try_push()`, `try_pop()`,
 `peek()` and `drain()` respect the single-producer, single-consumer split.
 
 ## 10. Kernel facilities
 
-The kernel surface stays small, but three gaps forced application code back to
-the C API and are now covered: `DelayableWorkItem` for the retry, timeout and
-debounce shape; `WorkQueue<StackSize>` so slow work stays off the system queue;
-and `Mutex` with `ScopedLock`, which releases on the early-return paths where a
+The kernel surface stays small, covering the three shapes an application would
+otherwise reach into the C API for: `DelayableWorkItem` for retry, timeout and
+debounce; `WorkQueue<StackSize>` so slow work stays off the system queue; and
+`Mutex` with `ScopedLock`, which releases on the early-return paths where a
 hand-written unlock gets forgotten.
 
 `detail::timeout()` converts durations through microseconds and rounds up, so a
@@ -243,7 +242,7 @@ requested wait is never shorter than asked. Truncating to milliseconds turned
 not distinguish from a full queue.
 
 `StaticThread` and `WorkQueue` accept a name, which is what makes a fault dump or
-the thread analyser readable.
+the thread analyzer readable.
 
 **Storage duration.** `StaticThread` and `WorkQueue` embed Zephyr stack macros
 whose architecture-specific alignment only holds for objects with static storage
@@ -254,7 +253,7 @@ A `static_assert` cannot detect this, so it is a contract.
 
 Zephyr's watchdog API is per-device for setup and per-channel for feeding:
 `wdt_install_timeout()` adds a channel, but `wdt_setup()` starts the peripheral
-and is rejected once it is running. Modelling a channel as if it owned the device
+and is rejected once it is running. Modeling a channel as if it owned the device
 meant a second channel's `init()` failed with an error that read like a driver
 fault.
 
@@ -316,21 +315,20 @@ credential that arrives at run time.
 
 ## 14. Bluetooth
 
-`BluetoothManager` covers both roles. Central-role `connect()` takes a BLE
-identity address; peripheral-role `start_advertising()` was previously absent,
-which left the archetypal sensor node — advertise, accept a connection, expose a
-characteristic — unable to use the class at all.
+`BluetoothManager` covers both roles: central-role `connect()` takes a BLE
+identity address, and peripheral-role `start_advertising()` serves the archetypal
+sensor node — advertise, accept a connection, expose a characteristic.
 
 ## 15. Thread safety
 
 | Category | Contract |
 | --- | --- |
-| Pure value types (`Error`, `Quantity`, filters, transforms, `PidController`, `StateMachine`) | Not synchronised. One owner, or the caller synchronises. |
+| Pure value types (`Error`, `Quantity`, filters, transforms, `PidController`, `StateMachine`) | Not synchronized. One owner, or the caller synchronizes. |
 | `SpscRingBuffer` | One producer, one consumer, concurrently. `push_overwrite()` and `clear()` need both sides in one context. |
 | `MessageQueue`, `Semaphore`, `Mutex` | Fully thread safe. `try_put`, `try_get` and `give` are ISR-safe. |
 | `WorkItem`, `DelayableWorkItem` | `submit()`/`schedule()` are ISR-safe. Replacing a handler must not race a pending run. |
 | Hardware handles (`AdcChannel`, `GpioOutput`, `PwmOutput`) | One owner per peripheral. |
-| `WifiManager`, `BluetoothManager` | Lifecycle operations are serialised internally. One instance per interface or stack; a second is inert and reports `errors::no_device`. |
+| `WifiManager`, `BluetoothManager` | Lifecycle operations are serialized internally. One instance per interface or stack; a second is inert and reports `errors::no_device`. |
 | `HttpClient`, `MqttClient`, sockets | One owner. Not safe to use from two threads at once. |
 | `Button`, `LedPatternPlayer` | Poll from one context. |
 
@@ -342,11 +340,11 @@ Two layers, deliberately separated:
   compiler under `-Werror`. It runs in seconds without a west workspace, which is
   what makes the numeric layers practical to iterate on. Ten suites.
 - **`tests/smoke`** is a `ztest` application. Every `*.conf` is a separate
-  configuration, and CI discovers them by glob so the matrix cannot drift: ten of
-  the fourteen configurations were previously never built at all.
+  configuration, and CI discovers them by glob, so adding a `.conf` adds it to the
+  matrix and the two cannot drift apart.
 
 `native_sim` produces a real executable, so CI runs the suites rather than only
-building them. Building alone would not have caught a single assertion.
+building them.
 
 `PowerManager` needs a board advertising `HAS_PM`, which `native_sim` does not, so
 `power.conf` is built separately on `qemu_cortex_m3` and CI asserts the option

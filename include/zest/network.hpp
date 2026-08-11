@@ -29,8 +29,7 @@ namespace zest
  * DNS keeps its own type rather than folding into `Error`, because Zephyr's
  * `enum dns_resolve_status` values collide numerically with errno: `DNS_EAI_NONAME`
  * is `-2`, which as an errno reads as `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`,
- * which reads as `-ENOMEM`. Returning them as a bare `int` made the two
- * indistinguishable.
+ * which reads as `-ENOMEM`.
  */
 enum class DnsError {
 	bad_flags,

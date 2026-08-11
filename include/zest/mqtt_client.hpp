@@ -34,9 +34,8 @@ struct MqttConnectionOptions {
 /**
  * Fixed-buffer MQTT client driven from the application's event loop.
  *
- * The loop needs three things from this class, and all three are provided rather
- * than left to be dug out of `native_handle()`: the pollable descriptor, the time
- * until the next keepalive is due, and a way to service both.
+ * The loop gets what it needs directly: the pollable descriptor, the time until
+ * the next keepalive is due, and a way to service both.
  *
  * ```cpp
  * zest::Poller<1> poller;
@@ -120,10 +119,8 @@ class MqttClient
 	/**
 	 * Publish a payload.
 	 *
-	 * The message id defaults to the next value from an internal counter. It
-	 * used to default to a constant `1`, which is wrong for QoS 1 and 2: the
-	 * broker cannot correlate acknowledgements when every message claims the
-	 * same id.
+	 * A @p message_id of 0 draws the next value from an internal counter, so
+	 * QoS 1 and 2 acknowledgements stay correlatable.
 	 */
 	[[nodiscard]] Result<> publish(std::string_view topic, std::span<const std::byte> payload,
 				       mqtt_qos qos = MQTT_QOS_0_AT_MOST_ONCE, bool retain = false,

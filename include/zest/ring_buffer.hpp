@@ -20,7 +20,7 @@ namespace zest
  * A lock-free typed ring buffer for one producer and one consumer.
  *
  * This is the buffer an interrupt or sampling callback pushes into and a worker
- * thread drains. `MessageQueue` is a kernel synchronisation primitive --- it can
+ * thread drains. `MessageQueue` is a kernel synchronization primitive --- it can
  * block, wakes a waiter on every message, and cannot be inspected without
  * removing --- which makes it the wrong tool for buffering a sample stream.
  * This has no kernel involvement at all: pushing from an ISR costs a couple of
@@ -29,7 +29,7 @@ namespace zest
  * **Concurrency contract.** Exactly one context may call `try_push()` and
  * exactly one may call `try_pop()`/`drain()`, and they may run concurrently.
  * `push_overwrite()` and `clear()` touch both ends, so they need the two sides to
- * be the same context, or external synchronisation.
+ * be the same context, or external synchronization.
  *
  * One slot beyond `Capacity` is reserved to distinguish full from empty, so the
  * object holds `Capacity + 1` elements.
@@ -74,7 +74,7 @@ class SpscRingBuffer
 	 *
 	 * The right policy for telemetry where recent samples matter more than a
 	 * complete history. Requires that the producer and consumer be the same
-	 * context, or be synchronised externally, because it moves both ends.
+	 * context, or be synchronized externally, because it moves both ends.
 	 */
 	bool push_overwrite(const T &value) noexcept
 	{
@@ -156,7 +156,7 @@ class SpscRingBuffer
 	}
 
 	/**
-	 * Discard everything. Requires both sides to be quiescent or synchronised.
+	 * Discard everything. Requires both sides to be quiescent or synchronized.
 	 */
 	void clear() noexcept
 	{

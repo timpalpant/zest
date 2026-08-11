@@ -46,9 +46,7 @@ class NetworkMonitor
 	/**
 	 * Wait for an IPv4 address.
 	 *
-	 * A `milliseconds::max()` timeout waits indefinitely. Earlier versions
-	 * computed an absolute deadline that overflowed for that sentinel, which is
-	 * the natural way to spell "wait forever".
+	 * A `milliseconds::max()` timeout waits indefinitely.
 	 */
 	[[nodiscard]] Result<NetworkState>
 	wait_for_ipv4(std::chrono::milliseconds timeout) noexcept;

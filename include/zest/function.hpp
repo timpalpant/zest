@@ -19,10 +19,8 @@ namespace zest
  * call that installs them.
  *
  * Two pointers wide, never allocates, and --- unlike a bare `void (*)(void *)`
- * plus a context argument --- accepts a lambda that captures. That pattern is
- * what forces application code back into writing static trampolines and casting
- * context pointers by hand, which is precisely the boilerplate this library
- * exists to remove.
+ * plus a context argument --- accepts a lambda that captures, so no static
+ * trampoline or hand-cast context pointer is needed.
  *
  * The referenced callable must outlive the `FunctionRef`. Use `InplaceFunction`
  * when the callback has to be stored.

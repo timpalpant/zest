@@ -66,9 +66,8 @@ jobs:
           python3 -m pip install --break-system-packages --user \
             -r zephyr/scripts/requirements-base.txt
 
-      # Every *.conf in tests/smoke is discovered, so the matrix cannot drift out
-      # of date the way a hardcoded component list did: ten of the fourteen
-      # configurations were previously never built at all.
+      # Every *.conf in tests/smoke is discovered by glob, so adding one adds it
+      # to the matrix and the two cannot drift apart.
       - name: Build and run every configuration
         env:
           ZEPHYR_TOOLCHAIN_VARIANT: host
@@ -90,8 +89,8 @@ jobs:
               echo "::endgroup::"
               return
             fi
-            # native_sim produces a real executable, so the ztest suite actually
-            # runs. Building alone would not have caught a single assertion.
+            # native_sim produces a real executable, so the ztest suite runs
+            # rather than only being built.
             if ! timeout 120 "$GITHUB_WORKSPACE/build/$name/zephyr/zephyr.exe"; then
               echo "::error::$name failed its tests"
               failed="$failed $name"
@@ -148,18 +147,23 @@ jobs:
             -r zephyr/scripts/requirements-base.txt
           west sdk install --toolchains arm-zephyr-eabi
 
-      # CONFIG_PM depends on HAS_PM, which native_sim does not provide, so this
-      # configuration silently resolved ZEST_POWER_MANAGER to n everywhere else
-      # and tested nothing.
+      # CONFIG_PM depends on HAS_PM, which no emulated board provides, so this is
+      # a build-only check on real silicon: nucleo_l476rg (stm32l4x) selects
+      # HAS_PM. The suite is not executed here; every other configuration runs
+      # under native_sim in the job above.
       - name: Build the PowerManager configuration
         working-directory: zephyr-workspace
         run: |
           west build -p -d "$GITHUB_WORKSPACE/build/power" \
-            -b qemu_cortex_m3 "$GITHUB_WORKSPACE/tests/smoke" -- \
+            -b nucleo_l476rg "$GITHUB_WORKSPACE/tests/smoke" -- \
             -DEXTRA_ZEPHYR_MODULES="$GITHUB_WORKSPACE" \
             -DEXTRA_CONF_FILE="$GITHUB_WORKSPACE/tests/smoke/power.conf"
-          # Fail loudly if the option did not actually take effect.
-          grep -q '^CONFIG_ZEST_POWER_MANAGER=y$' "$GITHUB_WORKSPACE/build/power/zephyr/.config"
+          # Fail loudly if the board is not PM-capable or the option did not take
+          # effect, rather than passing on a build that compiled nothing new.
+          config="$GITHUB_WORKSPACE/build/power/zephyr/.config"
+          grep -q '^CONFIG_HAS_PM=y$' "$config"
+          grep -q '^CONFIG_PM=y$' "$config"
+          grep -q '^CONFIG_ZEST_POWER_MANAGER=y$' "$config"
 
   docs:
     name: Documentation
@@ -186,8 +190,8 @@ jobs:
           find include src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print0 \
             | xargs -0 .format-venv/bin/clang-format --dry-run --Werror
 
-  licence:
-    name: Licence headers
+  license:
+    name: License headers
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -130,11 +130,7 @@ ZTEST(zest_smoke, test_version_macros)
 
 ZTEST(zest_smoke, test_timeout_preserves_sub_millisecond_waits)
 {
-	/*
-	 * The regression this guards: converting through milliseconds truncated
-	 * 500us to K_NO_WAIT, so a sub-millisecond wait silently became a
-	 * non-blocking call that failed for reasons the caller could not diagnose.
-	 */
+	/* A sub-millisecond wait must stay a wait, not collapse to K_NO_WAIT. */
 	const auto sub_ms = zest::detail::timeout(500us);
 	zassert_true(sub_ms.ticks > 0, "500us must not become K_NO_WAIT");
 
@@ -204,7 +200,7 @@ ZTEST(zest_smoke, test_work_item_runs_a_capturing_lambda)
 	observed = 0;
 	int increment = 7;
 
-	zest::WorkItem work{[&observed, increment]() noexcept { observed += increment; }};
+	zest::WorkItem work{[increment]() noexcept { observed += increment; }};
 	zassert_true(work.submit().has_value());
 
 	for (int i = 0; i < 100 && observed == 0; ++i) {
@@ -300,7 +296,7 @@ ZTEST(zest_smoke, test_retained_value)
 	zassert_false(retained.valid());
 }
 
-/* ------------------------------------------------------------- behaviour --- */
+/* ------------------------------------------------------------- behavior --- */
 
 ZTEST(zest_smoke, test_filters_and_control_compile_and_run)
 {
@@ -451,10 +447,9 @@ ZTEST(zest_smoke, test_sensor_surface_compiles)
 ZTEST(zest_smoke, test_settings_rejects_persisting_a_view)
 {
 	/*
-	 * The regression this guards: std::string_view is trivially copyable, so an
-	 * unconstrained overload wrote a pointer and a length to flash. The
-	 * TriviallySerializable concept rejects view types, and the string_view
-	 * overload persists the characters instead.
+	 * View types are trivially copyable, so an unconstrained overload would
+	 * write a pointer and a length to flash. TriviallySerializable rejects
+	 * them; the string_view overload persists the characters instead.
 	 */
 	static_assert(!zest::TriviallySerializable<std::string_view>);
 	static_assert(!zest::TriviallySerializable<const char *>);

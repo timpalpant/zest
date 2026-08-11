@@ -486,7 +486,7 @@ doxygen Doxyfile
 Open `build/docs/html/index.html`. GitHub Pages publishes the landing page and
 generated API reference automatically from `master`.
 
-## Licence
+## License
 
 LGPL-3.0-or-later. See [COPYING.LESSER](COPYING.LESSER) and
 [COPYING](COPYING).

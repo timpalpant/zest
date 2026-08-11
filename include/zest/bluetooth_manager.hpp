@@ -22,12 +22,9 @@ namespace zest
 {
 
 /**
- * A small BLE connection manager covering both roles.
- *
- * Central-role `connect()` takes a BLE identity address. Peripheral-role
- * `start_advertising()` was previously missing entirely, which left the archetypal
- * sensor node --- advertise, accept a connection, expose a characteristic ---
- * unable to use this class at all.
+ * A small BLE connection manager covering both roles: `connect()` for the
+ * central role, taking a BLE identity address, and `start_advertising()` for the
+ * peripheral role.
  */
 class BluetoothManager
 {

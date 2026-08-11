@@ -20,10 +20,9 @@ namespace zest
 /**
  * Duty cycle in per-mille (0..1000).
  *
- * Integer rather than a `double`: no common Cortex-M part has a
- * double-precision FPU, so a floating duty in an LED or motor update loop is a
- * soft-float call. Per-mille is finer than any PWM peripheral resolves in
- * practice.
+ * Integer rather than floating point, which would cost a soft-float call in an
+ * LED or motor update loop. Per-mille is finer than any PWM peripheral resolves
+ * in practice.
  */
 using PerMille = std::uint16_t;
 

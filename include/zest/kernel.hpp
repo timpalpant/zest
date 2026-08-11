@@ -29,9 +29,7 @@ namespace detail
  *
  * Sub-millisecond waits are preserved by converting through microseconds, and
  * anything finer is rounded *up*, so a requested wait is never shorter than
- * asked. Truncating to milliseconds instead --- as an earlier version did ---
- * silently turned `put(value, 500us)` into a non-blocking call that reported a
- * spurious failure the caller could not tell apart from a full queue.
+ * asked.
  *
  * `duration::max()` means wait forever; a non-positive duration means do not wait.
  */
@@ -389,9 +387,7 @@ class WorkItem
 /**
  * A work item that can be scheduled to run later.
  *
- * This is the shape most retry, timeout and debounce logic needs, and its
- * absence was the main reason application code had to reach for
- * `k_work_delayable` directly.
+ * This is the shape most retry, timeout and debounce logic needs.
  */
 class DelayableWorkItem
 {
@@ -496,7 +492,7 @@ template <std::size_t StackSize> class WorkQueue
 	 * Start the queue's thread.
 	 *
 	 * @p name is applied to the thread when Zephyr's thread names are enabled,
-	 * which is what makes a fault dump or the thread analyser readable.
+	 * which is what makes a fault dump or the thread analyzer readable.
 	 */
 	[[nodiscard]] Result<> start(int priority, const char *name = "zest_wq") noexcept
 	{

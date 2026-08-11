@@ -136,7 +136,7 @@ constexpr bool hysteresis_below()
 }
 static_assert(hysteresis_below());
 
-/* The 'above' direction was previously untested. */
+/* The 'above' direction: latches on at the high threshold, off at the low one. */
 constexpr bool hysteresis_above()
 {
 	Hysteresis<int> overheat{60, 80, ThresholdDirection::above};

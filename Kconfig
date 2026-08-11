@@ -189,7 +189,7 @@ config ZEST_HTTP_CLIENT
 	  Synchronous HTTP/1.1 client with caller-owned response storage.
 
 	  TLS is a separate option, so a device that only talks to a plain-HTTP
-	  endpoint no longer has to pull in mbedTLS and its heap.
+	  endpoint does not pull in mbedTLS and its heap.
 
 if ZEST_HTTP_CLIENT
 

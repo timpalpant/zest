@@ -16,20 +16,15 @@
  * @file
  * @brief Battery voltage measurement and state-of-charge estimation.
  *
- * The two halves stay distinct because they fail differently. A discharge curve
- * is a constant of the design, validated once --- at compile time for a literal
- * --- after which `percent_at()` only interpolates and cannot fail. Reading the
- * cell, by contrast, is I/O that fails per call. Fusing them would force every
- * charge estimate to handle curve errors that a valid literal can never produce.
- *
  * ```text
  * AdcChannel -> VoltageDivider -> BatteryMonitor -> BatteryCurve::percent_at()
  * ```
  *
- * The curve half is pure integer arithmetic with no dependency at all, so it is
- * always available and is exercised by the host test suite. `BatteryMonitor`
- * needs Zephyr's ADC driver API and so is declared only under
- * `CONFIG_ZEST_BATTERY_MONITOR=y`.
+ * Measurement and charge estimation are separate types: reading the cell is I/O
+ * that fails per call, while a curve is validated once and then cannot fail.
+ *
+ * The curve half needs no Kconfig option and no Zephyr facility. `BatteryMonitor`
+ * is declared only under `CONFIG_ZEST_BATTERY_MONITOR=y`.
  */
 
 namespace zest
@@ -127,11 +122,7 @@ interpolate_validated_curve(std::int32_t millivolts, std::span<const CurvePoint>
  * A discharge curve whose shape has already been checked.
  *
  * Validation happens once, when the curve is built, so `percent_at()` only
- * interpolates and cannot fail. That matters because charge estimation runs on
- * every battery reading, whereas the curve is a constant of the design: paying
- * for revalidation per reading is pure overhead, and forcing every caller to
- * handle three `CurveError` cases that a valid literal can never produce is pure
- * noise.
+ * interpolates and cannot fail.
  *
  * Build one with `make_battery_curve()` for a runtime curve, or `battery_curve()`
  * for a literal that should fail the build if it is malformed.
@@ -241,12 +232,9 @@ estimate_charge_percent(std::int32_t millivolts, std::span<const CurvePoint> cur
 /* ----------------------------------------------------------- measurement --- */
 
 /*
- * Everything above is Zephyr-independent, so the host test suite can exercise
- * the curve arithmetic directly, and a build that only needs a curve pulls in no
- * driver headers. BatteryMonitor reaches the ADC, so it appears only when its
- * Kconfig option is on --- which is also exactly when the ADC dependencies it
- * includes below are guaranteed present, since ZEST_BATTERY_MONITOR depends on
- * ADC and selects ZEST_ADC_CHANNEL.
+ * ZEST_BATTERY_MONITOR depends on ADC and selects ZEST_ADC_CHANNEL, so this guard
+ * is also what makes the includes below safe. Everything above is Zephyr-free and
+ * stays available without it.
  */
 #if defined(CONFIG_ZEST_BATTERY_MONITOR)
 

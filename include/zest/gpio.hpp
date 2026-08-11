@@ -56,16 +56,15 @@ class GpioInput
 /**
  * A devicetree-configured digital output.
  *
- * The last driven state is tracked in the object, so `state()` is exact and
- * cannot fail. Reading the pin back instead --- which an earlier version did via
- * `gpio_pin_get_dt()` --- does not work for a plain output: Zephyr documents that
- * call for *input* pins, and on most SoCs a pin configured `GPIO_OUTPUT_*` has its
- * input buffer disabled, so the read returns a constant rather than an error.
+ * The object tracks the last state it drove, so `state()` is exact and cannot
+ * fail. It does not read the pin: `gpio_pin_get_dt()` is for *input* pins, and on
+ * most SoCs an output has its input buffer disabled, so the read returns a
+ * constant rather than an error.
  *
- * `read_pin()` remains available when the electrical level genuinely matters, but
- * it requires the pin to have been configured for readback --- see `init()`.
+ * Use `read_pin()` when the electrical level genuinely matters; it requires the
+ * pin to have been configured for readback --- see `init()`.
  *
- * Because the object now carries state, `set()` and `toggle()` are non-const.
+ * `set()` and `toggle()` are non-const, since they update the tracked state.
  */
 class GpioOutput
 {

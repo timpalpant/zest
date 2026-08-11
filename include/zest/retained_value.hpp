@@ -26,10 +26,9 @@ struct RetainedStorage {
 /**
  * Integrity-checked access to retained, caller-owned storage.
  *
- * `store()` writes the payload, then its checksum, then the magic word, so a
- * reset partway through leaves the record invalid rather than plausible. A
- * release fence enforces that order: without one the compiler is free to sink the
- * magic store ahead of the payload, which defeats the entire scheme.
+ * `store()` writes the payload, then its checksum, then the magic word, in that
+ * order, so a reset partway through leaves the record invalid rather than
+ * plausible.
  */
 template <typename T>
 	requires std::is_trivially_copyable_v<T>

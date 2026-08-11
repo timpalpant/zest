@@ -175,11 +175,10 @@ template <std::totally_ordered T, std::size_t Window> class MedianFilter
 /**
  * Exponential moving average with a runtime smoothing factor.
  *
- * The arithmetic type defaults to `float`. No common Cortex-M part has a
- * double-precision FPU, so a `double` filter compiles to soft-float calls in the
- * per-sample path; pass `double` explicitly only where that cost is acceptable.
- * When the smoothing factor can be a power of two, `ShiftMovingAverage` avoids
- * floating point entirely.
+ * The arithmetic type defaults to `float`, since `double` compiles to soft-float
+ * calls on a part with no double-precision FPU --- which is every common
+ * Cortex-M. When the smoothing factor can be a power of two, `ShiftMovingAverage`
+ * avoids floating point entirely.
  */
 template <typename T, typename Real = float>
 	requires std::is_arithmetic_v<T> && std::floating_point<Real>

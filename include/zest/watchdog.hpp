@@ -22,13 +22,9 @@ class WatchdogChannel;
 /**
  * One watchdog peripheral.
  *
- * Zephyr's watchdog API is per-device for setup and per-channel for feeding:
- * `wdt_install_timeout()` adds a channel, but `wdt_setup()` starts the whole
- * peripheral and is rejected once it is running. Modelling a channel as if it
- * owned the device --- as an earlier version did --- meant a second channel's
- * `init()` failed with an error that read like a driver fault.
- *
- * So install every channel first, then `start()` once:
+ * Setup is per-device and feeding is per-channel, and the peripheral rejects
+ * further channels once it is running. Install every channel first, then
+ * `start()` once:
  *
  * ```cpp
  * zest::WatchdogDevice watchdog{DEVICE_DT_GET(DT_ALIAS(watchdog0))};
