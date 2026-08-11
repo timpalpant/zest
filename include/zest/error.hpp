@@ -74,6 +74,10 @@ class Error
  * `Result<>` spells the void case, so an operation that either succeeds or
  * reports a failure returns `Result<>`, and one that yields a value returns
  * `Result<T>`.
+ *
+ * Whether dropping one is diagnosed is the standard library's call, not this
+ * library's: libstdc++ marks `std::expected` `[[nodiscard]]` from GCC 15, and
+ * functions returning a `Result` carry no attribute of their own.
  */
 template <typename T = void> using Result = std::expected<T, Error>;
 
@@ -99,7 +103,7 @@ template <typename T = void> using Result = std::expected<T, Error>;
  * return zest::check(gpio_pin_set_dt(&spec_, value));
  * ```
  */
-[[nodiscard]] constexpr Result<> check(int rc) noexcept
+constexpr Result<> check(int rc) noexcept
 {
 	if (rc < 0) {
 		return fail(rc);
@@ -112,7 +116,7 @@ template <typename T = void> using Result = std::expected<T, Error>;
  *
  * Negative is failure; otherwise the value is returned unchanged.
  */
-[[nodiscard]] constexpr Result<int> check_value(int rc) noexcept
+constexpr Result<int> check_value(int rc) noexcept
 {
 	if (rc < 0) {
 		return fail(rc);
@@ -124,7 +128,7 @@ template <typename T = void> using Result = std::expected<T, Error>;
  * Translate a call that reports failure by returning a negative value *or* zero
  * where zero is not meaningful, mapping zero to @p zero_error.
  */
-[[nodiscard]] constexpr Result<int> check_positive(int rc, Error zero_error) noexcept
+constexpr Result<int> check_positive(int rc, Error zero_error) noexcept
 {
 	if (rc < 0) {
 		return fail(rc);

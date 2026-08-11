@@ -275,13 +275,13 @@ class BatteryMonitor
 	}
 
 	/** Configure the ADC channel. Call once before read_millivolts(). */
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		return divider_.init();
 	}
 
 	/** Sample the battery, averaging the configured number of conversions. */
-	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
+	Result<Millivolts> read_millivolts() const noexcept
 	{
 		return divider_.read_average_millivolts(oversample_);
 	}

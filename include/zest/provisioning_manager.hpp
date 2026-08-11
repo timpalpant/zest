@@ -56,12 +56,12 @@ template <std::size_t MaximumNameLength = 64U> class ProvisioningManager
 	{
 	}
 
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		return settings_.init();
 	}
 
-	[[nodiscard]] Result<> provision(std::string_view ssid,
+	Result<> provision(std::string_view ssid,
 					 std::string_view password) const noexcept
 	{
 		if (ssid.empty() || ssid.size() > 32U || password.size() > 64U) {
@@ -75,7 +75,7 @@ template <std::size_t MaximumNameLength = 64U> class ProvisioningManager
 		return settings_.set("wifi", value);
 	}
 
-	[[nodiscard]] Result<ProvisionedWifi> credentials() const noexcept
+	Result<ProvisionedWifi> credentials() const noexcept
 	{
 		ZEST_TRY_ASSIGN(record, settings_.template get<ProvisionedWifi>("wifi"));
 		if (record.version != ProvisionedWifi::kVersion) {
@@ -88,7 +88,7 @@ template <std::size_t MaximumNameLength = 64U> class ProvisioningManager
 		return record;
 	}
 
-	[[nodiscard]] Result<> clear() const noexcept
+	Result<> clear() const noexcept
 	{
 		return settings_.erase("wifi");
 	}

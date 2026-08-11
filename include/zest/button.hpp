@@ -75,7 +75,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	Button &operator=(const Button &) = delete;
 
 	/** Configure and sample the input to establish its initial stable state. */
-	[[nodiscard]] Result<> init(time_point now = clock::now()) noexcept
+	Result<> init(time_point now = clock::now()) noexcept
 	{
 		ZEST_TRY(input_.init());
 		ZEST_TRY_ASSIGN(state, input_.get());
@@ -89,7 +89,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	}
 
 	/** Enable both-edge wakeups. Events are still decoded by poll(). */
-	[[nodiscard]] Result<> enable_interrupts() noexcept
+	Result<> enable_interrupts() noexcept
 	{
 		if (!initialized_) {
 			return fail(errors::not_connected);
@@ -122,7 +122,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	}
 
 	/** Poll the GPIO and report any debounced events. */
-	[[nodiscard]] Result<ButtonUpdate> poll(time_point now = clock::now()) noexcept
+	Result<ButtonUpdate> poll(time_point now = clock::now()) noexcept
 	{
 		if (!initialized_) {
 			return fail(errors::not_connected);
@@ -162,7 +162,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	 * enabled the wait sleeps on the edge semaphore and only polls to re-check
 	 * timing; otherwise it polls at @p poll_interval.
 	 */
-	[[nodiscard]] Result<ButtonUpdate>
+	Result<ButtonUpdate>
 	wait(std::chrono::milliseconds timeout = std::chrono::milliseconds::max(),
 	     std::chrono::milliseconds poll_interval = std::chrono::milliseconds{5}) noexcept
 	{

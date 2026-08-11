@@ -44,7 +44,7 @@ class SpiDevice
 	}
 
 	/** Verify the bus controller is present and ready. */
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		if (spec_.bus == nullptr || !device_is_ready(spec_.bus)) {
 			return fail(errors::no_device);
@@ -53,7 +53,7 @@ class SpiDevice
 	}
 
 	/** Clock @p data out, discarding what arrives. */
-	[[nodiscard]] Result<> write(std::span<const std::byte> data) const noexcept
+	Result<> write(std::span<const std::byte> data) const noexcept
 	{
 		if (data.empty()) {
 			return fail(errors::invalid_argument);
@@ -65,7 +65,7 @@ class SpiDevice
 	}
 
 	/** Clock zeros out and capture what arrives. */
-	[[nodiscard]] Result<> read(std::span<std::byte> destination) const noexcept
+	Result<> read(std::span<std::byte> destination) const noexcept
 	{
 		if (destination.empty()) {
 			return fail(errors::invalid_argument);
@@ -76,7 +76,7 @@ class SpiDevice
 	}
 
 	/** Full-duplex transfer. The two spans may differ in length. */
-	[[nodiscard]] Result<> transceive(std::span<const std::byte> transmit,
+	Result<> transceive(std::span<const std::byte> transmit,
 					  std::span<std::byte> receive) const noexcept
 	{
 		if (transmit.empty() && receive.empty()) {
@@ -98,7 +98,7 @@ class SpiDevice
 	 * This is the shape most register reads take: the response arrives after the
 	 * command bytes rather than alongside them.
 	 */
-	[[nodiscard]] Result<> write_then_read(std::span<const std::byte> command,
+	Result<> write_then_read(std::span<const std::byte> command,
 					       std::span<std::byte> destination) const noexcept
 	{
 		if (command.empty() || destination.empty()) {
@@ -120,7 +120,7 @@ class SpiDevice
 	}
 
 	/** Release the bus when the configuration holds chip select between transfers. */
-	[[nodiscard]] Result<> release() const noexcept
+	Result<> release() const noexcept
 	{
 		return check(spi_release_dt(&spec_));
 	}

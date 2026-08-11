@@ -23,7 +23,7 @@ namespace
 	return value == 0 ? GpioState::inactive : GpioState::active;
 }
 
-[[nodiscard]] Result<> require_ready(const gpio_dt_spec &spec) noexcept
+Result<> require_ready(const gpio_dt_spec &spec) noexcept
 {
 	if (!gpio_is_ready_dt(&spec)) {
 		return fail(errors::no_device);
@@ -31,7 +31,7 @@ namespace
 	return {};
 }
 
-[[nodiscard]] Result<GpioState> read(const gpio_dt_spec &spec) noexcept
+Result<GpioState> read(const gpio_dt_spec &spec) noexcept
 {
 	const int value = gpio_pin_get_dt(&spec);
 	if (value < 0) {

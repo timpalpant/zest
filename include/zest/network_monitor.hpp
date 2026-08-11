@@ -39,7 +39,7 @@ class NetworkMonitor
 	NetworkMonitor(const NetworkMonitor &) = delete;
 	NetworkMonitor &operator=(const NetworkMonitor &) = delete;
 
-	[[nodiscard]] Result<> start() noexcept;
+	Result<> start() noexcept;
 	void stop() noexcept;
 	[[nodiscard]] NetworkState state() const noexcept;
 
@@ -48,11 +48,11 @@ class NetworkMonitor
 	 *
 	 * A `milliseconds::max()` timeout waits indefinitely.
 	 */
-	[[nodiscard]] Result<NetworkState>
+	Result<NetworkState>
 	wait_for_ipv4(std::chrono::milliseconds timeout) noexcept;
 
 	/** Wait for the interface to be usable on any address family. */
-	[[nodiscard]] Result<NetworkState>
+	Result<NetworkState>
 	wait_for_ready(std::chrono::milliseconds timeout) noexcept;
 
 	[[nodiscard]] net_if *interface() const noexcept
@@ -70,7 +70,7 @@ class NetworkMonitor
 	void handle(std::uint64_t event, net_if *interface) noexcept;
 
 	template <typename Predicate>
-	[[nodiscard]] Result<NetworkState> wait_until(std::chrono::milliseconds timeout,
+	Result<NetworkState> wait_until(std::chrono::milliseconds timeout,
 						      Predicate ready) noexcept;
 
 	net_if *interface_{};

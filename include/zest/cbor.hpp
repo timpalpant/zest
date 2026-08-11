@@ -311,7 +311,7 @@ inline bool decode_fields(zcbor_state_t *state, const json_obj_descr *descriptor
  * `HttpClient::post()`.
  */
 template <Serializable T>
-[[nodiscard]] Result<std::span<const std::byte>> encode(const T &value,
+Result<std::span<const std::byte>> encode(const T &value,
 							std::span<std::byte> buffer) noexcept
 {
 	static_assert(!detail::has_object_array(Schema<T>::descriptors, Schema<T>::count),
@@ -345,7 +345,7 @@ template <Serializable T>
  * Keys with no matching field are skipped.
  */
 template <Serializable T>
-[[nodiscard]] Result<Parsed<T>> parse(std::span<const std::byte> payload) noexcept
+Result<Parsed<T>> parse(std::span<const std::byte> payload) noexcept
 {
 	static_assert(Schema<T>::count <= 64U,
 		      "field presence is reported in a 64-bit bitmap, so a schema is limited "
@@ -372,7 +372,7 @@ template <Serializable T>
 
 /** Decode from a mutable buffer, for symmetry with the JSON codec. */
 template <Serializable T>
-[[nodiscard]] Result<Parsed<T>> parse(std::span<std::byte> payload) noexcept
+Result<Parsed<T>> parse(std::span<std::byte> payload) noexcept
 {
 	return parse<T>(std::span<const std::byte>{payload});
 }

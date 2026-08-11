@@ -34,8 +34,8 @@ struct RebootReason {
 		return (supported & cause) != 0U;
 	}
 
-	[[nodiscard]] static Result<RebootReason> read() noexcept;
-	[[nodiscard]] static Result<> clear() noexcept;
+	static Result<RebootReason> read() noexcept;
+	static Result<> clear() noexcept;
 };
 
 /** Access to the SoC's stable hardware identifier, without allocating. */
@@ -48,12 +48,12 @@ class DeviceIdentity
 	 * The returned view covers exactly the bytes the SoC provided, with no
 	 * padding, so identifiers of different lengths stay distinguishable.
 	 */
-	[[nodiscard]] static Result<std::span<const std::byte>>
+	static Result<std::span<const std::byte>>
 	read(std::span<std::byte> destination) noexcept;
 
 	/** Read into owned storage, reporting how many bytes are meaningful. */
 	template <std::size_t Capacity = 16U>
-	[[nodiscard]] static Result<std::pair<std::array<std::byte, Capacity>, std::size_t>>
+	static Result<std::pair<std::array<std::byte, Capacity>, std::size_t>>
 	read_array() noexcept
 	{
 		std::array<std::byte, Capacity> id{};
@@ -62,10 +62,10 @@ class DeviceIdentity
 	}
 
 	/** Format the identifier as lowercase hexadecimal into @p destination. */
-	[[nodiscard]] static Result<std::string_view>
+	static Result<std::string_view>
 	read_hex(std::span<char> destination) noexcept;
 
-	[[nodiscard]] static Result<std::array<std::byte, 8>> eui64() noexcept;
+	static Result<std::array<std::byte, 8>> eui64() noexcept;
 };
 
 } /* namespace zest */

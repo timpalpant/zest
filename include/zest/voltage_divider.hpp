@@ -37,7 +37,7 @@ class VoltageDivider
 	{
 	}
 
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		if (measured_.count() <= 0 || full_.count() < measured_.count()) {
 			return fail(errors::invalid_argument);
@@ -46,21 +46,21 @@ class VoltageDivider
 	}
 
 	/** Sample once and reconstruct the divider's input voltage. */
-	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
+	Result<Millivolts> read_millivolts() const noexcept
 	{
 		ZEST_TRY_ASSIGN(output, channel_.read_millivolts());
 		return divider_input(output, measured_, full_);
 	}
 
 	/** Average @p samples conversions, then reconstruct. */
-	[[nodiscard]] Result<Millivolts> read_average_millivolts(std::size_t samples) const noexcept
+	Result<Millivolts> read_average_millivolts(std::size_t samples) const noexcept
 	{
 		ZEST_TRY_ASSIGN(output, channel_.read_average_millivolts(samples));
 		return divider_input(output, measured_, full_);
 	}
 
 	template <std::size_t Samples = 1U>
-	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept
+	Result<Millivolts> read_millivolts() const noexcept
 	{
 		return read_average_millivolts(Samples);
 	}

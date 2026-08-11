@@ -68,7 +68,7 @@ enum class Format : std::uint8_t {
  * `HttpClient::post()`.
  */
 template <Format F, Serializable T>
-[[nodiscard]] Result<std::span<const std::byte>> serialize(const T &value,
+Result<std::span<const std::byte>> serialize(const T &value,
 							   std::span<std::byte> buffer) noexcept
 {
 	if constexpr (F == Format::json) {
@@ -95,7 +95,7 @@ template <Format F, Serializable T>
  * decoder leaves it untouched.
  */
 template <Format F, Serializable T>
-[[nodiscard]] Result<Parsed<T>> deserialize(std::span<std::byte> payload) noexcept
+Result<Parsed<T>> deserialize(std::span<std::byte> payload) noexcept
 {
 	if constexpr (F == Format::json) {
 #if defined(CONFIG_ZEST_JSON)

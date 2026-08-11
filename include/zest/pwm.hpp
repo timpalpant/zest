@@ -49,26 +49,26 @@ class PwmOutput
 	}
 
 	/** Verify the controller and drive a zero pulse. */
-	[[nodiscard]] Result<> init() const noexcept;
+	Result<> init() const noexcept;
 
 	/** Set the pulse width using the period from devicetree. */
-	[[nodiscard]] Result<> set_pulse(std::chrono::nanoseconds pulse) const noexcept;
+	Result<> set_pulse(std::chrono::nanoseconds pulse) const noexcept;
 
 	/** Set the duty cycle in per-mille, using integer arithmetic throughout. */
-	[[nodiscard]] Result<> set_duty(PerMille duty) const noexcept;
+	Result<> set_duty(PerMille duty) const noexcept;
 
 	/** Convenience for a 0..1 fraction; converts to per-mille first. */
-	[[nodiscard]] Result<> set_duty_cycle(float duty_cycle) const noexcept
+	Result<> set_duty_cycle(float duty_cycle) const noexcept
 	{
 		return set_duty(per_mille_from(duty_cycle));
 	}
 
 	/** Set both period and pulse width. */
-	[[nodiscard]] Result<> set(std::chrono::nanoseconds period,
+	Result<> set(std::chrono::nanoseconds period,
 				   std::chrono::nanoseconds pulse) const noexcept;
 
 	/** Drive a zero pulse. */
-	[[nodiscard]] Result<> disable() const noexcept;
+	Result<> disable() const noexcept;
 
 	[[nodiscard]] constexpr std::chrono::nanoseconds period() const noexcept
 	{
@@ -92,19 +92,19 @@ class DimmableLed
 	{
 	}
 
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		return output_.init();
 	}
-	[[nodiscard]] Result<> set_brightness(PerMille brightness) const noexcept
+	Result<> set_brightness(PerMille brightness) const noexcept
 	{
 		return output_.set_duty(brightness);
 	}
-	[[nodiscard]] Result<> set_brightness(float brightness) const noexcept
+	Result<> set_brightness(float brightness) const noexcept
 	{
 		return output_.set_duty_cycle(brightness);
 	}
-	[[nodiscard]] Result<> off() const noexcept
+	Result<> off() const noexcept
 	{
 		return output_.disable();
 	}
@@ -144,9 +144,9 @@ class RgbLed
 	{
 	}
 
-	[[nodiscard]] Result<> init() const noexcept;
-	[[nodiscard]] Result<> set(RgbColor color) const noexcept;
-	[[nodiscard]] Result<> off() const noexcept;
+	Result<> init() const noexcept;
+	Result<> set(RgbColor color) const noexcept;
+	Result<> off() const noexcept;
 
       private:
 	PwmOutput red_;
@@ -164,20 +164,20 @@ class Servo
 	{
 	}
 
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		return output_.init();
 	}
 
 	/** Set position in per-mille of travel, from 0 to 1000. */
-	[[nodiscard]] Result<> set_position(PerMille position) const noexcept;
+	Result<> set_position(PerMille position) const noexcept;
 
-	[[nodiscard]] Result<> set_position(float position) const noexcept
+	Result<> set_position(float position) const noexcept
 	{
 		return set_position(per_mille_from(position));
 	}
 
-	[[nodiscard]] Result<> disable() const noexcept
+	Result<> disable() const noexcept
 	{
 		return output_.disable();
 	}
@@ -196,15 +196,15 @@ class Buzzer
 	{
 	}
 
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		return output_.init();
 	}
 
 	/** Start a tone. Volume is a duty amplitude in per-mille. */
-	[[nodiscard]] Result<> tone(Hertz frequency, PerMille volume = kFullScale) const noexcept;
+	Result<> tone(Hertz frequency, PerMille volume = kFullScale) const noexcept;
 
-	[[nodiscard]] Result<> stop() const noexcept
+	Result<> stop() const noexcept
 	{
 		return output_.disable();
 	}

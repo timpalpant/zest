@@ -51,7 +51,7 @@ namespace zest::json
  * @p json must be writable. Any `char *` member of the result points into it, so
  * the buffer must outlive the value; a `char[N]` member holds a copy.
  */
-template <Serializable T> [[nodiscard]] Result<Parsed<T>> parse(std::span<char> json) noexcept
+template <Serializable T> Result<Parsed<T>> parse(std::span<char> json) noexcept
 {
 	static_assert(Schema<T>::count <= 64U,
 		      "field presence is reported in a 64-bit bitmap, so a schema is limited "
@@ -72,7 +72,7 @@ template <Serializable T> [[nodiscard]] Result<Parsed<T>> parse(std::span<char> 
 }
 
 /** Parse from a byte buffer, such as an HTTP response body. */
-template <Serializable T> [[nodiscard]] Result<Parsed<T>> parse(std::span<std::byte> json) noexcept
+template <Serializable T> Result<Parsed<T>> parse(std::span<std::byte> json) noexcept
 {
 	return parse<T>(std::span<char>{reinterpret_cast<char *>(json.data()), json.size()});
 }
@@ -83,7 +83,7 @@ template <Serializable T> [[nodiscard]] Result<Parsed<T>> parse(std::span<std::b
  * Returns a view of the encoded text, NUL-terminated within @p buffer.
  */
 template <Serializable T>
-[[nodiscard]] Result<std::string_view> encode(const T &value, std::span<char> buffer) noexcept
+Result<std::string_view> encode(const T &value, std::span<char> buffer) noexcept
 {
 	if (buffer.empty()) {
 		return fail(errors::invalid_argument);
@@ -100,7 +100,7 @@ template <Serializable T>
 
 /** Encode into a byte buffer, for `HttpClient::post()` and similar. */
 template <Serializable T>
-[[nodiscard]] Result<std::span<const std::byte>> encode(const T &value,
+Result<std::span<const std::byte>> encode(const T &value,
 							std::span<std::byte> buffer) noexcept
 {
 	ZEST_TRY_ASSIGN(text, encode(value, std::span<char>{reinterpret_cast<char *>(buffer.data()),
@@ -109,7 +109,7 @@ template <Serializable T>
 }
 
 /** Bytes an encoding of @p value would occupy, excluding the NUL. */
-template <Serializable T> [[nodiscard]] Result<std::size_t> encoded_size(const T &value) noexcept
+template <Serializable T> Result<std::size_t> encoded_size(const T &value) noexcept
 {
 	const ssize_t size =
 		json_calc_encoded_len(Schema<T>::descriptors, Schema<T>::count, &value);
@@ -124,7 +124,7 @@ template <Serializable T> [[nodiscard]] Result<std::size_t> encoded_size(const T
  *
  * @p T must be a wrapper whose schema holds exactly one array field.
  */
-template <Serializable T> [[nodiscard]] Result<T> parse_array(std::span<char> json) noexcept
+template <Serializable T> Result<T> parse_array(std::span<char> json) noexcept
 {
 	static_assert(Schema<T>::count == 1U,
 		      "a top-level array maps to a wrapper struct whose schema has exactly "
@@ -138,14 +138,14 @@ template <Serializable T> [[nodiscard]] Result<T> parse_array(std::span<char> js
 	return value;
 }
 
-template <Serializable T> [[nodiscard]] Result<T> parse_array(std::span<std::byte> json) noexcept
+template <Serializable T> Result<T> parse_array(std::span<std::byte> json) noexcept
 {
 	return parse_array<T>(std::span<char>{reinterpret_cast<char *>(json.data()), json.size()});
 }
 
 /** Encode a wrapper's single array field as a top-level JSON array. */
 template <Serializable T>
-[[nodiscard]] Result<std::string_view> encode_array(const T &value, std::span<char> buffer) noexcept
+Result<std::string_view> encode_array(const T &value, std::span<char> buffer) noexcept
 {
 	static_assert(Schema<T>::count == 1U,
 		      "a top-level array maps to a wrapper struct whose schema has exactly "
@@ -167,7 +167,7 @@ template <Serializable T>
  *
  * Needed only when composing JSON by hand; `encode()` escapes for itself.
  */
-[[nodiscard]] inline Result<std::string_view> escape(std::span<char> buffer,
+inline Result<std::string_view> escape(std::span<char> buffer,
 						     std::size_t length) noexcept
 {
 	if (length > buffer.size()) {

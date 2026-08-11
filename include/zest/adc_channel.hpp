@@ -33,13 +33,13 @@ class AdcChannel
 	}
 
 	/** Configure the underlying ADC channel. */
-	[[nodiscard]] Result<> init() const noexcept;
+	Result<> init() const noexcept;
 
 	/** Perform one conversion and return its raw sample value. */
-	[[nodiscard]] Result<std::int32_t> read_raw() const noexcept;
+	Result<std::int32_t> read_raw() const noexcept;
 
 	/** Perform one conversion and return the input voltage. */
-	[[nodiscard]] Result<Millivolts> read_millivolts() const noexcept;
+	Result<Millivolts> read_millivolts() const noexcept;
 
 	/**
 	 * Perform one conversion and return the input voltage in microvolts.
@@ -51,7 +51,7 @@ class AdcChannel
 	 * few hundred millivolts --- a bridge, a thermocouple, or the output of an
 	 * instrumentation amplifier.
 	 */
-	[[nodiscard]] Result<Microvolts> read_microvolts() const noexcept;
+	Result<Microvolts> read_microvolts() const noexcept;
 
 	/**
 	 * Average @p samples conversions taken in a single hardware sequence.
@@ -60,16 +60,16 @@ class AdcChannel
 	 * once rather than once per sample. Drivers that reject multi-sampling fall
 	 * back to repeated single conversions automatically.
 	 */
-	[[nodiscard]] Result<Millivolts>
+	Result<Millivolts>
 	read_average_millivolts(std::size_t samples) const noexcept;
 
 	/** Average @p samples conversions, in microvolts. @see read_microvolts() */
-	[[nodiscard]] Result<Microvolts>
+	Result<Microvolts>
 	read_average_microvolts(std::size_t samples) const noexcept;
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
-	[[nodiscard]] Result<Millivolts> read_average_millivolts() const noexcept
+	Result<Millivolts> read_average_millivolts() const noexcept
 	{
 		static_assert(Samples > 0U, "at least one ADC sample is required");
 		return read_average_millivolts(Samples);
@@ -77,7 +77,7 @@ class AdcChannel
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
-	[[nodiscard]] Result<Microvolts> read_average_microvolts() const noexcept
+	Result<Microvolts> read_average_microvolts() const noexcept
 	{
 		static_assert(Samples > 0U, "at least one ADC sample is required");
 		return read_average_microvolts(Samples);
@@ -102,10 +102,10 @@ class AdcChannel
 
       private:
 	/** Convert a raw reading to millivolts using the channel's reference. */
-	[[nodiscard]] Result<Millivolts> to_millivolts(std::int32_t raw) const noexcept;
+	Result<Millivolts> to_millivolts(std::int32_t raw) const noexcept;
 
 	/** Convert a raw reading to microvolts using the channel's reference. */
-	[[nodiscard]] Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
+	Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
 
 	/**
 	 * Mean of @p samples raw conversions, burst where the driver allows it.
@@ -114,7 +114,7 @@ class AdcChannel
 	 * one raw-to-voltage conversion per burst instead of per sample, and no
 	 * rounding to the output unit before the samples are summed.
 	 */
-	[[nodiscard]] Result<std::int32_t> read_average_raw(std::size_t samples) const noexcept;
+	Result<std::int32_t> read_average_raw(std::size_t samples) const noexcept;
 
 	adc_dt_spec spec_;
 };

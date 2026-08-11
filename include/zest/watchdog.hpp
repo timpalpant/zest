@@ -48,15 +48,15 @@ class WatchdogDevice
 	 *
 	 * @p timeout is the window within which the channel must be fed.
 	 */
-	[[nodiscard]] Result<WatchdogChannel>
+	Result<WatchdogChannel>
 	install(std::chrono::milliseconds timeout,
 		std::uint8_t reset_flags = WDT_FLAG_RESET_SOC) noexcept;
 
 	/** Start the peripheral. Call once, after installing every channel. */
-	[[nodiscard]] Result<> start(std::uint8_t options = 0U) noexcept;
+	Result<> start(std::uint8_t options = 0U) noexcept;
 
 	/** Stop the peripheral, where the hardware permits it. */
-	[[nodiscard]] Result<> stop() noexcept;
+	Result<> stop() noexcept;
 
 	[[nodiscard]] bool running() const noexcept
 	{
@@ -83,7 +83,7 @@ class WatchdogChannel
 {
       public:
 	/** Reset the channel's timer. */
-	[[nodiscard]] Result<> feed() const noexcept;
+	Result<> feed() const noexcept;
 
 	[[nodiscard]] constexpr int channel_id() const noexcept
 	{

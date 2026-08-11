@@ -154,37 +154,37 @@ class HttpClient
 	HttpClient(const HttpClient &) = delete;
 	HttpClient &operator=(const HttpClient &) = delete;
 
-	[[nodiscard]] HttpResult<HttpResponse>
+	HttpResult<HttpResponse>
 	request(const HttpRequest &request, std::span<std::byte> response_buffer) noexcept;
 
 	/** Issue a request and receive each response header as it is parsed. */
-	[[nodiscard]] HttpResult<HttpResponse> request(const HttpRequest &request,
+	HttpResult<HttpResponse> request(const HttpRequest &request,
 						       std::span<std::byte> response_buffer,
 						       HeaderHandler on_header) noexcept;
 
-	[[nodiscard]] HttpResult<HttpResponse>
+	HttpResult<HttpResponse>
 	get(std::string_view url, std::span<std::byte> response_buffer,
 	    std::span<const HttpHeader> headers = {}) noexcept;
 
-	[[nodiscard]] HttpResult<HttpResponse>
+	HttpResult<HttpResponse>
 	post(std::string_view url, std::span<const std::byte> body,
 	     std::span<std::byte> response_buffer,
 	     std::string_view content_type = "application/octet-stream",
 	     std::span<const HttpHeader> headers = {}) noexcept;
 
-	[[nodiscard]] HttpResult<HttpResponse>
+	HttpResult<HttpResponse>
 	put(std::string_view url, std::span<const std::byte> body,
 	    std::span<std::byte> response_buffer,
 	    std::string_view content_type = "application/octet-stream",
 	    std::span<const HttpHeader> headers = {}) noexcept;
 
-	[[nodiscard]] HttpResult<HttpResponse>
+	HttpResult<HttpResponse>
 	patch(std::string_view url, std::span<const std::byte> body,
 	      std::span<std::byte> response_buffer,
 	      std::string_view content_type = "application/octet-stream",
 	      std::span<const HttpHeader> headers = {}) noexcept;
 
-	[[nodiscard]] HttpResult<HttpResponse>
+	HttpResult<HttpResponse>
 	delete_request(std::string_view url, std::span<std::byte> response_buffer,
 		       std::span<const HttpHeader> headers = {}) noexcept;
 

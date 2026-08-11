@@ -32,7 +32,7 @@ void close_descriptor(int &descriptor) noexcept
 	}
 }
 
-[[nodiscard]] Result<> open_descriptor(int &descriptor, int family, int type, int protocol) noexcept
+Result<> open_descriptor(int &descriptor, int family, int type, int protocol) noexcept
 {
 	if (descriptor >= 0) {
 		return fail(errors::already);
@@ -44,7 +44,7 @@ void close_descriptor(int &descriptor) noexcept
 	return {};
 }
 
-[[nodiscard]] Result<> set_timeout_option(int descriptor, int option,
+Result<> set_timeout_option(int descriptor, int option,
 					  std::chrono::milliseconds timeout) noexcept
 {
 	if (descriptor < 0) {

@@ -40,7 +40,7 @@ class Uart
 	}
 
 	/** Verify the device is present and ready. */
-	[[nodiscard]] Result<> init() const noexcept
+	Result<> init() const noexcept
 	{
 		if (device_ == nullptr || !device_is_ready(device_)) {
 			return fail(errors::no_device);
@@ -49,7 +49,7 @@ class Uart
 	}
 
 	/** Apply a line configuration at run time, where the driver supports it. */
-	[[nodiscard]] Result<>
+	Result<>
 	configure(std::uint32_t baud_rate, std::uint8_t data_bits = UART_CFG_DATA_BITS_8,
 		  std::uint8_t parity = UART_CFG_PARITY_NONE,
 		  std::uint8_t stop_bits = UART_CFG_STOP_BITS_1,
@@ -67,7 +67,7 @@ class Uart
 	}
 
 	/** Send every byte, blocking until the driver accepts it. */
-	[[nodiscard]] Result<> write(std::span<const std::byte> data) const noexcept
+	Result<> write(std::span<const std::byte> data) const noexcept
 	{
 		ZEST_TRY(init());
 		for (const std::byte value : data) {
@@ -77,13 +77,13 @@ class Uart
 	}
 
 	/** Send text. */
-	[[nodiscard]] Result<> write(std::string_view text) const noexcept
+	Result<> write(std::string_view text) const noexcept
 	{
 		return write(std::as_bytes(std::span{text.data(), text.size()}));
 	}
 
 	/** Read one byte, waiting up to @p timeout. */
-	[[nodiscard]] Result<std::byte> read_byte(std::chrono::milliseconds timeout) const noexcept
+	Result<std::byte> read_byte(std::chrono::milliseconds timeout) const noexcept
 	{
 		ZEST_TRY(init());
 		const auto deadline = uptime() + timeout;
@@ -109,7 +109,7 @@ class Uart
 	 * Stops early on timeout rather than failing, so a short frame is still
 	 * delivered. An empty result means nothing arrived at all.
 	 */
-	[[nodiscard]] Result<std::span<std::byte>>
+	Result<std::span<std::byte>>
 	read(std::span<std::byte> destination, std::chrono::milliseconds timeout) const noexcept
 	{
 		ZEST_TRY(init());
@@ -139,7 +139,7 @@ class Uart
 	 *
 	 * The common shape for a module that answers in ASCII lines.
 	 */
-	[[nodiscard]] Result<std::string_view> read_line(std::span<char> destination,
+	Result<std::string_view> read_line(std::span<char> destination,
 							 std::chrono::milliseconds timeout,
 							 char terminator = '\n') const noexcept
 	{
