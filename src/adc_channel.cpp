@@ -39,6 +39,13 @@ Result<Millivolts> AdcChannel::to_millivolts(std::int32_t raw) const noexcept
 	return Millivolts{value};
 }
 
+Result<Microvolts> AdcChannel::to_microvolts(std::int32_t raw) const noexcept
+{
+	std::int32_t value = raw;
+	ZEST_TRY(check(adc_raw_to_microvolts_dt(&spec_, &value)));
+	return Microvolts{value};
+}
+
 Result<std::int32_t> AdcChannel::read_raw() const noexcept
 {
 	adc_sequence sequence{};
@@ -70,25 +77,22 @@ Result<std::int32_t> AdcChannel::read_raw() const noexcept
 	return static_cast<std::int32_t>(raw);
 }
 
-Result<Millivolts> AdcChannel::read_millivolts() const noexcept
-{
-	ZEST_TRY_ASSIGN(raw, read_raw());
-	return to_millivolts(raw);
-}
-
-Result<Millivolts> AdcChannel::read_average_millivolts(std::size_t samples) const noexcept
+Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noexcept
 {
 	if (samples == 0U) {
 		return fail(errors::invalid_argument);
 	}
+	if (samples == 1U) {
+		return read_raw();
+	}
 
 	/*
 	 * Take the burst in one sequence where possible: entering the driver once
-	 * for N samples rather than N times avoids N sequence setups and N
-	 * raw-to-millivolt conversions.
+	 * for N samples rather than N times avoids N sequence setups, and on a
+	 * bus-attached converter it is the difference between one transaction and
+	 * N round trips.
 	 */
-	if (samples > 1U && samples <= kMaxBurst && !wide_samples() &&
-	    !spec_.channel_cfg.differential) {
+	if (samples <= kMaxBurst && !wide_samples()) {
 		std::array<std::uint16_t, kMaxBurst> buffer{};
 		const adc_sequence_options options{
 			.interval_us = 0U,
@@ -103,12 +107,23 @@ Result<Millivolts> AdcChannel::read_average_millivolts(std::size_t samples) cons
 			sequence.buffer_size = samples * sizeof(std::uint16_t);
 
 			if (adc_read_dt(&spec_, &sequence) == 0) {
+				const bool differential = spec_.channel_cfg.differential;
 				std::int64_t total = 0;
 				for (std::size_t i = 0; i < samples; ++i) {
-					total += buffer[i];
+					/* Sign-extend per element, exactly as the
+					 * single-shot path does. Summing a
+					 * differential burst as unsigned would turn
+					 * every negative sample into a large positive
+					 * one and average to nonsense.
+					 */
+					total += differential
+							 ? static_cast<std::int32_t>(
+								   static_cast<std::int16_t>(
+									   buffer[i]))
+							 : static_cast<std::int32_t>(buffer[i]);
 				}
-				return to_millivolts(static_cast<std::int32_t>(
-					total / static_cast<std::int64_t>(samples)));
+				return static_cast<std::int32_t>(
+					total / static_cast<std::int64_t>(samples));
 			}
 			/* Driver declined multi-sampling; fall through. */
 		}
@@ -119,7 +134,31 @@ Result<Millivolts> AdcChannel::read_average_millivolts(std::size_t samples) cons
 		ZEST_TRY_ASSIGN(raw, read_raw());
 		total += raw;
 	}
-	return to_millivolts(static_cast<std::int32_t>(total / static_cast<std::int64_t>(samples)));
+	return static_cast<std::int32_t>(total / static_cast<std::int64_t>(samples));
+}
+
+Result<Millivolts> AdcChannel::read_millivolts() const noexcept
+{
+	ZEST_TRY_ASSIGN(raw, read_raw());
+	return to_millivolts(raw);
+}
+
+Result<Microvolts> AdcChannel::read_microvolts() const noexcept
+{
+	ZEST_TRY_ASSIGN(raw, read_raw());
+	return to_microvolts(raw);
+}
+
+Result<Millivolts> AdcChannel::read_average_millivolts(std::size_t samples) const noexcept
+{
+	ZEST_TRY_ASSIGN(raw, read_average_raw(samples));
+	return to_millivolts(raw);
+}
+
+Result<Microvolts> AdcChannel::read_average_microvolts(std::size_t samples) const noexcept
+{
+	ZEST_TRY_ASSIGN(raw, read_average_raw(samples));
+	return to_microvolts(raw);
 }
 
 } /* namespace zest */

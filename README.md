@@ -176,7 +176,22 @@ zest::Result<> sample() noexcept
 ```
 
 `read_average_millivolts(n)` takes the burst in one hardware sequence rather than
-entering the driver `n` times.
+entering the driver `n` times. On a bus-attached converter that is the difference
+between one transaction and `n` round trips.
+
+There is a microvolt read for every millivolt one --- `read_microvolts()` and
+`read_average_microvolts(n)`. Millivolts are the wrong unit for a
+high-resolution part: a 16-bit converter across a 2 V span resolves about 31 uV,
+so rounding to millivolts discards five bits of exactly the resolution such a
+part was chosen for. Reach for microvolts whenever the signal is smaller than a
+few hundred millivolts --- a bridge, a thermocouple, or an instrumentation
+amplifier's output.
+
+Averaging happens in the raw domain, so a burst costs one raw-to-voltage
+conversion rather than `n`, and nothing is rounded to the output unit before the
+samples are summed. Differential channels burst too: each sample is sign-extended
+individually, because summing a differential burst as unsigned would turn every
+negative reading into a large positive one.
 
 `GpioOutput::state()` reports the last state driven and cannot fail. Reading the
 pin back needs `init(state, /* enable_readback = */ true)`, because Zephyr's

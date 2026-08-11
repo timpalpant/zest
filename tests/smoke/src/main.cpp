@@ -370,6 +370,20 @@ ZTEST(zest_smoke, test_adc_surface_compiles)
 	static_assert(noexcept(std::declval<const zest::AdcChannel &>().read_millivolts()));
 	static_assert(
 		noexcept(std::declval<const zest::AdcChannel &>().read_average_millivolts(16)));
+	static_assert(noexcept(std::declval<const zest::AdcChannel &>().read_microvolts()));
+	static_assert(
+		noexcept(std::declval<const zest::AdcChannel &>().read_average_microvolts(16)));
+
+	/*
+	 * The scale is carried in the type, so a microvolt reading cannot silently
+	 * be used where a millivolt one was meant.
+	 */
+	static_assert(
+		std::is_same_v<decltype(std::declval<const zest::AdcChannel &>().read_microvolts()),
+			       zest::Result<zest::Microvolts>>);
+	static_assert(std::is_same_v<decltype(std::declval<const zest::AdcChannel &>()
+						      .read_average_microvolts<8>()),
+				     zest::Result<zest::Microvolts>>);
 
 	constexpr auto curve = zest::battery_curve(std::array{
 		zest::CurvePoint{4200, 100},
