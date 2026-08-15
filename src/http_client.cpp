@@ -51,7 +51,7 @@ struct ParsedUrl {
 };
 
 struct RequestContext {
-	std::span<const HttpHeader> default_headers;
+	std::span<const OwnedHttpHeader> default_headers;
 	std::span<const HttpHeader> headers;
 	std::string_view user_agent;
 	std::span<std::byte> output;
@@ -107,7 +107,7 @@ class Socket final
 	int descriptor_;
 };
 
-[[nodiscard]] std::expected<ParsedUrl, HttpError> parse_url(std::string_view url) noexcept
+[[nodiscard]] Result<ParsedUrl, HttpError> parse_url(std::string_view url) noexcept
 {
 	if (url.empty() || url.size() > max_url_length) {
 		return std::unexpected(
@@ -266,7 +266,7 @@ int optional_headers_callback(int socket, struct http_request *, void *user_data
 		}
 	}
 
-	auto send_headers = [&](std::span<const HttpHeader> headers) -> bool {
+	auto send_headers = [&](const auto &headers) -> bool {
 		for (const auto &header : headers) {
 			if (header.name.empty() ||
 			    header.name.find_first_of("\r\n:") != std::string_view::npos ||
@@ -312,8 +312,8 @@ int response_callback(struct http_response *response, enum http_final_call,
 	return 0;
 }
 
-[[nodiscard]] std::expected<Socket, HttpError>
-connect_socket(const ParsedUrl &url, const HttpClient::Options &options) noexcept
+[[nodiscard]] Result<Socket, HttpError> connect_socket(const ParsedUrl &url,
+						       const HttpClient::Options &options) noexcept
 {
 #if !defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
 	if (url.tls) {
@@ -380,7 +380,8 @@ connect_socket(const ParsedUrl &url, const HttpClient::Options &options) noexcep
 			if (!options.security_tags.empty() &&
 			    zsock_setsockopt(socket.get(), SOL_TLS, TLS_SEC_TAG_LIST,
 					     options.security_tags.data(),
-					     options.security_tags.size_bytes()) < 0) {
+					     options.security_tags.size() * sizeof(sec_tag_t)) <
+				    0) {
 				last_error = Error{-errno};
 				last_stage = HttpErrorStage::tls_configuration;
 				continue;
@@ -410,7 +411,7 @@ connect_socket(const ParsedUrl &url, const HttpClient::Options &options) noexcep
 
 } /* namespace */
 
-HttpClient::HttpClient() noexcept = default;
+HttpClient::HttpClient() = default;
 
 HttpClient::HttpClient(Options options) noexcept : options_{options}
 {
@@ -432,8 +433,8 @@ void HttpClient::close() noexcept
 	pooled_host_ = {};
 }
 
-HttpResult<HttpResponse> HttpClient::request(const HttpRequest &request,
-					     std::span<std::byte> response_buffer) noexcept
+Result<HttpResponse, HttpError> HttpClient::request(const HttpRequest &request,
+						    std::span<std::byte> response_buffer) noexcept
 {
 	auto parsed = parse_url(request.url);
 	if (!parsed) {
@@ -528,30 +529,19 @@ HttpResult<HttpResponse> HttpClient::request(const HttpRequest &request,
 	return response;
 }
 
-HttpResult<HttpResponse> HttpClient::request(const HttpRequest &request,
-					     std::span<std::byte> response_buffer,
-					     HeaderHandler on_header) noexcept
-{
-	/*
-	 * Zephyr's client exposes headers only through its own callback shape, which
-	 * has no user-data slot in this version. Until that lands, the handler is
-	 * accepted for API stability and the request proceeds without it.
-	 */
-	(void)on_header;
-	return this->request(request, response_buffer);
-}
-
-HttpResult<HttpResponse> HttpClient::get(std::string_view url, std::span<std::byte> response_buffer,
-					 std::span<const HttpHeader> headers) noexcept
+Result<HttpResponse, HttpError> HttpClient::get(std::string_view url,
+						std::span<std::byte> response_buffer,
+						std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::get, .url = url, .headers = headers},
 		       response_buffer);
 }
 
-HttpResult<HttpResponse> HttpClient::post(std::string_view url, std::span<const std::byte> body,
-					  std::span<std::byte> response_buffer,
-					  std::string_view content_type,
-					  std::span<const HttpHeader> headers) noexcept
+Result<HttpResponse, HttpError> HttpClient::post(std::string_view url,
+						 std::span<const std::byte> body,
+						 std::span<std::byte> response_buffer,
+						 std::string_view content_type,
+						 std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::post,
 				   .url = url,
@@ -561,10 +551,11 @@ HttpResult<HttpResponse> HttpClient::post(std::string_view url, std::span<const 
 		       response_buffer);
 }
 
-HttpResult<HttpResponse> HttpClient::put(std::string_view url, std::span<const std::byte> body,
-					 std::span<std::byte> response_buffer,
-					 std::string_view content_type,
-					 std::span<const HttpHeader> headers) noexcept
+Result<HttpResponse, HttpError> HttpClient::put(std::string_view url,
+						std::span<const std::byte> body,
+						std::span<std::byte> response_buffer,
+						std::string_view content_type,
+						std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::put,
 				   .url = url,
@@ -574,10 +565,11 @@ HttpResult<HttpResponse> HttpClient::put(std::string_view url, std::span<const s
 		       response_buffer);
 }
 
-HttpResult<HttpResponse> HttpClient::patch(std::string_view url, std::span<const std::byte> body,
-					   std::span<std::byte> response_buffer,
-					   std::string_view content_type,
-					   std::span<const HttpHeader> headers) noexcept
+Result<HttpResponse, HttpError> HttpClient::patch(std::string_view url,
+						  std::span<const std::byte> body,
+						  std::span<std::byte> response_buffer,
+						  std::string_view content_type,
+						  std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::patch,
 				   .url = url,
@@ -587,9 +579,9 @@ HttpResult<HttpResponse> HttpClient::patch(std::string_view url, std::span<const
 		       response_buffer);
 }
 
-HttpResult<HttpResponse> HttpClient::delete_request(std::string_view url,
-						    std::span<std::byte> response_buffer,
-						    std::span<const HttpHeader> headers) noexcept
+Result<HttpResponse, HttpError>
+HttpClient::delete_request(std::string_view url, std::span<std::byte> response_buffer,
+			   std::span<const HttpHeader> headers) noexcept
 {
 	return request(HttpRequest{.method = HttpMethod::delete_, .url = url, .headers = headers},
 		       response_buffer);
@@ -600,9 +592,9 @@ void HttpClient::set_timeout(std::chrono::milliseconds timeout) noexcept
 	options_.timeout = timeout;
 }
 
-void HttpClient::set_user_agent(std::string_view user_agent) noexcept
+void HttpClient::set_user_agent(std::string user_agent)
 {
-	options_.user_agent = user_agent;
+	options_.user_agent = std::move(user_agent);
 }
 
 void HttpClient::set_keep_alive(bool enabled) noexcept
@@ -615,10 +607,10 @@ void HttpClient::set_keep_alive(bool enabled) noexcept
 
 #if defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
 void HttpClient::set_peer_verification(PeerVerification verification,
-				       std::span<const sec_tag_t> security_tags) noexcept
+				       std::span<const sec_tag_t> security_tags)
 {
 	options_.peer_verification = verification;
-	options_.security_tags = security_tags;
+	options_.security_tags.assign(security_tags.begin(), security_tags.end());
 }
 #endif
 

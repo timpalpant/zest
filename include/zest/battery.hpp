@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <zest/error.hpp>
 #include <zest/units.hpp>
 
 #include <array>
@@ -69,7 +70,7 @@ enum class CurveError {
  * Points must be ordered from highest to lowest voltage, with percentages in
  * 0..100 that never increase as voltage falls.
  */
-[[nodiscard]] constexpr std::expected<void, CurveError>
+[[nodiscard]] constexpr Result<void, CurveError>
 validate_curve(std::span<const CurvePoint> curve) noexcept
 {
 	if (curve.size() < 2U) {
@@ -112,7 +113,8 @@ interpolate_validated_curve(Millivolts voltage, std::span<const CurvePoint> curv
 
 		if (level >= low.voltage.count()) {
 			const std::int64_t percentage_span = high.percent - low.percent;
-			const std::int64_t voltage_span = high.voltage.count() - low.voltage.count();
+			const std::int64_t voltage_span =
+				high.voltage.count() - low.voltage.count();
 			const std::int64_t offset = level - low.voltage.count();
 
 			return static_cast<std::uint8_t>(low.percent +
@@ -162,7 +164,7 @@ template <std::size_t Points> class BatteryCurve
 
       private:
 	template <std::size_t N>
-	friend constexpr std::expected<BatteryCurve<N>, CurveError>
+	friend constexpr Result<BatteryCurve<N>, CurveError>
 	make_battery_curve(const std::array<CurvePoint, N> &) noexcept;
 
 	constexpr explicit BatteryCurve(const std::array<CurvePoint, Points> &points) noexcept
@@ -175,7 +177,7 @@ template <std::size_t Points> class BatteryCurve
 
 /** Validate @p points once and wrap them, or report why they are malformed. */
 template <std::size_t N>
-[[nodiscard]] constexpr std::expected<BatteryCurve<N>, CurveError>
+[[nodiscard]] constexpr Result<BatteryCurve<N>, CurveError>
 make_battery_curve(const std::array<CurvePoint, N> &points) noexcept
 {
 	if (const auto valid = validate_curve(points); !valid) {
@@ -223,7 +225,7 @@ template <std::size_t N>
  * `battery_curve()` or `make_battery_curve()` and call `percent_at()`, which
  * validates once and cannot fail.
  */
-[[nodiscard]] constexpr std::expected<std::uint8_t, CurveError>
+[[nodiscard]] constexpr Result<std::uint8_t, CurveError>
 estimate_charge_percent(Millivolts voltage, std::span<const CurvePoint> curve) noexcept
 {
 	if (const auto valid = validate_curve(curve); !valid) {
@@ -285,13 +287,13 @@ class BatteryMonitor
 	}
 
 	/** Configure the divider and its channel. Call once before reading. */
-	Result<> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		return divider_.init();
 	}
 
 	/** One conversion, reconstructing the cell voltage in microvolts. */
-	Result<Microvolts> read_microvolts() const noexcept
+	[[nodiscard]] Result<Microvolts> read_microvolts() const noexcept
 	{
 		return divider_.read_microvolts();
 	}
@@ -300,20 +302,20 @@ class BatteryMonitor
 	 * Average the configured number of conversions into the cell voltage, in
 	 * microvolts.
 	 */
-	Result<Microvolts> read_average_microvolts() const noexcept
+	[[nodiscard]] Result<Microvolts> read_average_microvolts() const noexcept
 	{
 		return divider_.read_average_microvolts(oversample_);
 	}
 
 	/** Average @p samples conversions into the cell voltage, in microvolts. */
-	Result<Microvolts> read_average_microvolts(std::size_t samples) const noexcept
+	[[nodiscard]] Result<Microvolts> read_average_microvolts(std::size_t samples) const noexcept
 	{
 		return divider_.read_average_microvolts(samples);
 	}
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
-	Result<Microvolts> read_average_microvolts() const noexcept
+	[[nodiscard]] Result<Microvolts> read_average_microvolts() const noexcept
 	{
 		static_assert(Samples > 0U, "at least one ADC sample is required");
 		return divider_.read_average_microvolts(Samples);
@@ -328,9 +330,13 @@ class BatteryMonitor
 	 * and there is nothing to report.
 	 */
 	template <std::size_t Points>
-	Result<std::uint8_t> percent(const BatteryCurve<Points> &curve) const noexcept
+	[[nodiscard]] Result<std::uint8_t> percent(const BatteryCurve<Points> &curve) const noexcept
 	{
-		ZEST_TRY_ASSIGN(cell, read_average_microvolts());
+		auto cell_result = read_average_microvolts();
+		if (!cell_result) {
+			return fail(cell_result.error());
+		}
+		auto cell = *cell_result;
 		return curve.percent_at(quantity_cast<Millivolts>(cell));
 	}
 

@@ -146,24 +146,24 @@ class WifiManager
 	 * timeout. `disconnect()` and `scan()` from another thread will wait; use
 	 * `request_disconnect()` to interrupt without blocking.
 	 */
-	Result<ConnectionInfo>
+	[[nodiscard]] Result<ConnectionInfo>
 	connect(const Credentials &credentials,
 		std::chrono::milliseconds timeout = std::chrono::seconds{90}) noexcept;
 
-	Result<> disconnect(std::chrono::milliseconds timeout = std::chrono::seconds{
+	[[nodiscard]] Result<> disconnect(std::chrono::milliseconds timeout = std::chrono::seconds{
 						  10}) noexcept;
 
 	/** Ask the driver to disconnect without waiting for it to finish. */
-	Result<> request_disconnect() noexcept;
+	[[nodiscard]] Result<> request_disconnect() noexcept;
 
 	/**
 	 * Scan for access points, filling @p results and returning the ones found.
 	 */
-	Result<std::span<const WifiScanResult>>
+	[[nodiscard]] Result<std::span<const WifiScanResult>>
 	scan(std::span<WifiScanResult> results,
 	     std::chrono::milliseconds timeout = std::chrono::seconds{15}) noexcept;
 
-	Result<> set_power_save(bool enabled) noexcept;
+	[[nodiscard]] Result<> set_power_save(bool enabled) noexcept;
 
 	/** Install a state-change notifier, replacing any previous one. */
 	template <typename F> void on_state_change(F &&handler) noexcept

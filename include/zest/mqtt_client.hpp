@@ -71,14 +71,14 @@ class MqttClient
 	MqttClient &operator=(MqttClient &&) = delete;
 
 	template <typename F>
-	Result<> configure(const ResolvedAddress &broker,
+	[[nodiscard]] Result<> configure(const ResolvedAddress &broker,
 					 const MqttConnectionOptions &options, F &&handler) noexcept
 	{
 		handler_ = std::forward<F>(handler);
 		return configure_internal(broker, options);
 	}
 
-	Result<> configure(const ResolvedAddress &broker,
+	[[nodiscard]] Result<> configure(const ResolvedAddress &broker,
 					 const MqttConnectionOptions &options) noexcept
 	{
 		handler_.reset();
@@ -86,7 +86,7 @@ class MqttClient
 	}
 
 #if defined(CONFIG_MQTT_LIB_TLS)
-	Result<> use_tls(std::span<const sec_tag_t> tags, std::string_view hostname,
+	[[nodiscard]] Result<> use_tls(std::span<const sec_tag_t> tags, std::string_view hostname,
 				       int peer_verify = TLS_PEER_VERIFY_REQUIRED) noexcept
 	{
 		if (!configured_) {
@@ -108,7 +108,7 @@ class MqttClient
 	}
 #endif
 
-	Result<> connect() noexcept
+	[[nodiscard]] Result<> connect() noexcept
 	{
 		if (!configured_) {
 			return fail(errors::permission_denied);
@@ -122,7 +122,7 @@ class MqttClient
 	 * A @p message_id of 0 draws the next value from an internal counter, so
 	 * QoS 1 and 2 acknowledgements stay correlatable.
 	 */
-	Result<> publish(std::string_view topic, std::span<const std::byte> payload,
+	[[nodiscard]] Result<> publish(std::string_view topic, std::span<const std::byte> payload,
 				       mqtt_qos qos = MQTT_QOS_0_AT_MOST_ONCE, bool retain = false,
 				       std::uint16_t message_id = 0U) noexcept
 	{
@@ -145,7 +145,7 @@ class MqttClient
 	}
 
 	/** Publish text without the caller reinterpreting it as bytes. */
-	Result<> publish(std::string_view topic, std::string_view payload,
+	[[nodiscard]] Result<> publish(std::string_view topic, std::string_view payload,
 				       mqtt_qos qos = MQTT_QOS_0_AT_MOST_ONCE,
 				       bool retain = false) noexcept
 	{
@@ -153,7 +153,7 @@ class MqttClient
 			       retain);
 	}
 
-	Result<> subscribe(std::string_view topic,
+	[[nodiscard]] Result<> subscribe(std::string_view topic,
 					 mqtt_qos qos = MQTT_QOS_0_AT_MOST_ONCE,
 					 std::uint16_t message_id = 0U) noexcept
 	{
@@ -169,7 +169,7 @@ class MqttClient
 		return check(mqtt_subscribe(&client_, &request));
 	}
 
-	Result<> unsubscribe(std::string_view topic,
+	[[nodiscard]] Result<> unsubscribe(std::string_view topic,
 					   std::uint16_t message_id = 0U) noexcept
 	{
 		if (topic.empty()) {
@@ -185,13 +185,13 @@ class MqttClient
 	}
 
 	/** Read and dispatch whatever the broker has sent. */
-	Result<> input() noexcept
+	[[nodiscard]] Result<> input() noexcept
 	{
 		return check(mqtt_input(&client_));
 	}
 
 	/** Send a ping if the keepalive interval is due. */
-	Result<> keep_alive() noexcept
+	[[nodiscard]] Result<> keep_alive() noexcept
 	{
 		const int rc = mqtt_live(&client_);
 		if (rc == 0 || rc == -EAGAIN) {
@@ -201,18 +201,18 @@ class MqttClient
 	}
 
 	/** Retained name for `keep_alive()`. */
-	Result<> live() noexcept
+	[[nodiscard]] Result<> live() noexcept
 	{
 		return keep_alive();
 	}
 
 	/** Force a ping regardless of the keepalive schedule. */
-	Result<> ping() noexcept
+	[[nodiscard]] Result<> ping() noexcept
 	{
 		return check(mqtt_ping(&client_));
 	}
 
-	Result<> disconnect() noexcept
+	[[nodiscard]] Result<> disconnect() noexcept
 	{
 		if (!configured_) {
 			return {};
@@ -277,7 +277,7 @@ class MqttClient
 	}
 
       private:
-	Result<> configure_internal(const ResolvedAddress &broker,
+	[[nodiscard]] Result<> configure_internal(const ResolvedAddress &broker,
 						  const MqttConnectionOptions &options) noexcept
 	{
 		if (options.client_id.empty() ||

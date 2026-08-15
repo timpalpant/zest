@@ -62,7 +62,7 @@ template <std::size_t Capacity> class Poller
 	static_assert(Capacity > 0U, "a poller needs room for at least one descriptor");
 
 	/** Register @p descriptor for @p events. */
-	Result<> add(int descriptor, PollEvent events) noexcept
+	[[nodiscard]] Result<> add(int descriptor, PollEvent events) noexcept
 	{
 		if (descriptor < 0) {
 			return fail(errors::bad_descriptor);
@@ -92,7 +92,7 @@ template <std::size_t Capacity> class Poller
 	 * Returns the number of ready descriptors, which is zero on timeout. A
 	 * `milliseconds::max()` timeout waits indefinitely.
 	 */
-	Result<std::size_t> wait(std::chrono::milliseconds timeout) noexcept
+	[[nodiscard]] Result<std::size_t> wait(std::chrono::milliseconds timeout) noexcept
 	{
 		if (count_ == 0U) {
 			return fail(errors::invalid_argument);

@@ -470,6 +470,9 @@ ZTEST(zest_smoke, test_sensor_surface_compiles)
 	static_assert(std::is_nothrow_constructible_v<zest::SensorReader, const rtio_iodev &,
 						      rtio &, const sensor_decoder_api &>);
 	static_assert(std::is_nothrow_move_constructible_v<zest::AsyncSensorFrame>);
+	static_assert(std::is_same_v<
+		      decltype(std::declval<const zest::AsyncSensorReader &>().try_receive()),
+		      zest::Result<zest::AsyncSensorFrame>>);
 }
 #endif
 

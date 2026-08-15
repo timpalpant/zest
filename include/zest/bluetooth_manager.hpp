@@ -69,17 +69,17 @@ class BluetoothManager
 	/** Whether this instance owns the stack's connection callbacks. */
 	[[nodiscard]] bool owns_stack() const noexcept;
 
-	Result<> enable(std::string_view device_name = {}) noexcept;
-	Result<> disable() noexcept;
+	[[nodiscard]] Result<> enable(std::string_view device_name = {}) noexcept;
+	[[nodiscard]] Result<> disable() noexcept;
 
 	/** Begin advertising in the peripheral role. */
-	Result<> start_advertising(const AdvertisingOptions &options = {}) noexcept;
-	Result<> stop_advertising() noexcept;
+	[[nodiscard]] Result<> start_advertising(const AdvertisingOptions &options = {}) noexcept;
+	[[nodiscard]] Result<> stop_advertising() noexcept;
 
-	Result<> connect(const Peer &peer,
+	[[nodiscard]] Result<> connect(const Peer &peer,
 				       std::chrono::milliseconds timeout = std::chrono::seconds{
 					       30}) noexcept;
-	Result<> disconnect() noexcept;
+	[[nodiscard]] Result<> disconnect() noexcept;
 
 	template <typename F> void on_state_change(F &&handler) noexcept
 	{

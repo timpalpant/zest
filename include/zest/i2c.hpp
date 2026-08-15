@@ -29,7 +29,8 @@ namespace zest
  * constexpr zest::I2cDevice sensor{I2C_DT_SPEC_GET(DT_NODELABEL(my_sensor))};
  *
  * ZEST_TRY(sensor.init());
- * ZEST_TRY_ASSIGN(who_am_i, sensor.read_register(0x0F));
+ * auto who_am_i = sensor.read_register(0x0F);
+ * if (!who_am_i) return zest::fail(who_am_i.error());
  * ZEST_TRY(sensor.write_register(0x20, 0x57));
  *
  * std::array<std::byte, 6> measurement{};
@@ -44,7 +45,7 @@ class I2cDevice
 	}
 
 	/** Verify the bus controller is present and ready. */
-	Result<> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		if (spec_.bus == nullptr || !device_is_ready(spec_.bus)) {
 			return fail(errors::no_device);
@@ -52,7 +53,7 @@ class I2cDevice
 		return {};
 	}
 
-	Result<> write(std::span<const std::byte> data) const noexcept
+	[[nodiscard]] Result<> write(std::span<const std::byte> data) const noexcept
 	{
 		if (data.empty()) {
 			return fail(errors::invalid_argument);
@@ -61,7 +62,7 @@ class I2cDevice
 			&spec_, reinterpret_cast<const std::uint8_t *>(data.data()), data.size()));
 	}
 
-	Result<> read(std::span<std::byte> destination) const noexcept
+	[[nodiscard]] Result<> read(std::span<std::byte> destination) const noexcept
 	{
 		if (destination.empty()) {
 			return fail(errors::invalid_argument);
@@ -72,7 +73,7 @@ class I2cDevice
 	}
 
 	/** Write then read in one transaction, without releasing the bus. */
-	Result<> write_read(std::span<const std::byte> command,
+	[[nodiscard]] Result<> write_read(std::span<const std::byte> command,
 					  std::span<std::byte> destination) const noexcept
 	{
 		if (command.empty() || destination.empty()) {
@@ -85,7 +86,7 @@ class I2cDevice
 	}
 
 	/** Read one eight-bit register. */
-	Result<std::uint8_t> read_register(std::uint8_t address) const noexcept
+	[[nodiscard]] Result<std::uint8_t> read_register(std::uint8_t address) const noexcept
 	{
 		std::uint8_t value = 0U;
 		ZEST_TRY(check(i2c_reg_read_byte_dt(&spec_, address, &value)));
@@ -93,21 +94,21 @@ class I2cDevice
 	}
 
 	/** Write one eight-bit register. */
-	Result<> write_register(std::uint8_t address,
+	[[nodiscard]] Result<> write_register(std::uint8_t address,
 					      std::uint8_t value) const noexcept
 	{
 		return check(i2c_reg_write_byte_dt(&spec_, address, value));
 	}
 
 	/** Read-modify-write one eight-bit register. */
-	Result<> update_register(std::uint8_t address, std::uint8_t mask,
+	[[nodiscard]] Result<> update_register(std::uint8_t address, std::uint8_t mask,
 					       std::uint8_t value) const noexcept
 	{
 		return check(i2c_reg_update_byte_dt(&spec_, address, mask, value));
 	}
 
 	/** Read a run of registers starting at @p address. */
-	Result<> read_registers(std::uint8_t address,
+	[[nodiscard]] Result<> read_registers(std::uint8_t address,
 					      std::span<std::byte> destination) const noexcept
 	{
 		if (destination.empty()) {
@@ -119,7 +120,7 @@ class I2cDevice
 	}
 
 	/** Write a run of registers starting at @p address. */
-	Result<> write_registers(std::uint8_t address,
+	[[nodiscard]] Result<> write_registers(std::uint8_t address,
 					       std::span<const std::byte> data) const noexcept
 	{
 		if (data.empty()) {
@@ -131,7 +132,7 @@ class I2cDevice
 	}
 
 	/** Read a big-endian sixteen-bit register pair. */
-	Result<std::uint16_t> read_register16_be(std::uint8_t address) const noexcept
+	[[nodiscard]] Result<std::uint16_t> read_register16_be(std::uint8_t address) const noexcept
 	{
 		std::array<std::byte, 2> raw{};
 		ZEST_TRY(read_registers(address, raw));
@@ -140,7 +141,7 @@ class I2cDevice
 	}
 
 	/** Read a little-endian sixteen-bit register pair. */
-	Result<std::uint16_t> read_register16_le(std::uint8_t address) const noexcept
+	[[nodiscard]] Result<std::uint16_t> read_register16_le(std::uint8_t address) const noexcept
 	{
 		std::array<std::byte, 2> raw{};
 		ZEST_TRY(read_registers(address, raw));

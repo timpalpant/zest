@@ -33,10 +33,10 @@ class AdcChannel
 	}
 
 	/** Configure the underlying ADC channel. */
-	Result<> init() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept;
 
 	/** Perform one conversion and return its raw sample value. */
-	Result<std::int32_t> read_raw() const noexcept;
+	[[nodiscard]] Result<std::int32_t> read_raw() const noexcept;
 
 	/**
 	 * Perform one conversion and return the input voltage in microvolts.
@@ -52,7 +52,7 @@ class AdcChannel
 	 * }
 	 * ```
 	 */
-	Result<Microvolts> read_microvolts() const noexcept;
+	[[nodiscard]] Result<Microvolts> read_microvolts() const noexcept;
 
 	/**
 	 * Average @p samples conversions taken in a single hardware sequence, in
@@ -62,12 +62,12 @@ class AdcChannel
 	 * once rather than once per sample. Drivers that reject multi-sampling fall
 	 * back to repeated single conversions automatically.
 	 */
-	Result<Microvolts>
+	[[nodiscard]] Result<Microvolts>
 	read_average_microvolts(std::size_t samples) const noexcept;
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
-	Result<Microvolts> read_average_microvolts() const noexcept
+	[[nodiscard]] Result<Microvolts> read_average_microvolts() const noexcept
 	{
 		static_assert(Samples > 0U, "at least one ADC sample is required");
 		return read_average_microvolts(Samples);
@@ -92,7 +92,7 @@ class AdcChannel
 
       private:
 	/** Convert a raw reading to microvolts using the channel's reference. */
-	Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
+	[[nodiscard]] Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
 
 	/**
 	 * Mean of @p samples raw conversions, burst where the driver allows it.
@@ -101,7 +101,7 @@ class AdcChannel
 	 * one raw-to-voltage conversion per burst instead of per sample, and no
 	 * rounding to the output unit before the samples are summed.
 	 */
-	Result<std::int32_t> read_average_raw(std::size_t samples) const noexcept;
+	[[nodiscard]] Result<std::int32_t> read_average_raw(std::size_t samples) const noexcept;
 
 	adc_dt_spec spec_;
 };

@@ -7,8 +7,11 @@
 #pragma once
 
 #include <cerrno>
+#include <climits>
 #include <expected>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 
 namespace zest
 {
@@ -36,8 +39,13 @@ class Error
 	 *
 	 * A positive @p code is negated, so a C function that reports `EINVAL`
 	 * rather than `-EINVAL` still compares equal to `errors::invalid_argument`.
+	 * Zero is not an error and is normalized to `EINVAL`; the unrepresentable
+	 * magnitude `INT_MIN` is normalized to `ERANGE`. Thus an `Error` always holds
+	 * a valid, non-zero negative value.
 	 */
-	explicit constexpr Error(int code) noexcept : code_{code > 0 ? -code : code}
+	explicit constexpr Error(int code) noexcept
+		: code_{code == 0 ? -EINVAL
+				  : (code > 0 ? -code : (code == INT_MIN ? -ERANGE : code))}
 	{
 	}
 
@@ -75,11 +83,10 @@ class Error
  * reports a failure returns `Result<>`, and one that yields a value returns
  * `Result<T>`.
  *
- * Whether dropping one is diagnosed is the standard library's call, not this
- * library's: libstdc++ marks `std::expected` `[[nodiscard]]` from GCC 15, and
- * functions returning a `Result` carry no attribute of their own.
+ * Public functions returning a result are marked `[[nodiscard]]`; the alias
+ * itself cannot portably carry that attribute.
  */
-template <typename T = void> using Result = std::expected<T, Error>;
+template <typename T = void, typename E = Error> using Result = std::expected<T, E>;
 
 /** Construct the failure half of a `Result`. */
 [[nodiscard]] constexpr std::unexpected<Error> fail(Error error) noexcept
@@ -87,7 +94,16 @@ template <typename T = void> using Result = std::expected<T, Error>;
 	return std::unexpected<Error>{error};
 }
 
-/** Construct the failure half of a `Result` from a negative errno value. */
+/** Construct the failure half of a domain-specific `Result<T, E>`. */
+template <typename E>
+	requires(!std::is_same_v<std::remove_cvref_t<E>, Error> &&
+		 !std::is_integral_v<std::remove_cvref_t<E>>)
+[[nodiscard]] constexpr std::unexpected<std::remove_cvref_t<E>> fail(E &&error) noexcept
+{
+	return std::unexpected<std::remove_cvref_t<E>>{std::forward<E>(error)};
+}
+
+/** Construct the failure half of a `Result` from a non-zero errno value. */
 [[nodiscard]] constexpr std::unexpected<Error> fail(int code) noexcept
 {
 	return std::unexpected<Error>{Error{code}};
@@ -103,7 +119,7 @@ template <typename T = void> using Result = std::expected<T, Error>;
  * return zest::check(gpio_pin_set_dt(&spec_, value));
  * ```
  */
-constexpr Result<> check(int rc) noexcept
+[[nodiscard]] constexpr Result<> check(int rc) noexcept
 {
 	if (rc < 0) {
 		return fail(rc);
@@ -116,7 +132,7 @@ constexpr Result<> check(int rc) noexcept
  *
  * Negative is failure; otherwise the value is returned unchanged.
  */
-constexpr Result<int> check_value(int rc) noexcept
+[[nodiscard]] constexpr Result<int> check_value(int rc) noexcept
 {
 	if (rc < 0) {
 		return fail(rc);
@@ -128,7 +144,7 @@ constexpr Result<int> check_value(int rc) noexcept
  * Translate a call that reports failure by returning a negative value *or* zero
  * where zero is not meaningful, mapping zero to @p zero_error.
  */
-constexpr Result<int> check_positive(int rc, Error zero_error) noexcept
+[[nodiscard]] constexpr Result<int> check_positive(int rc, Error zero_error) noexcept
 {
 	if (rc < 0) {
 		return fail(rc);
@@ -205,17 +221,3 @@ inline constexpr Error not_permitted{-EPERM};
 			return ::zest::fail(_zest_result.error());                                 \
 		}                                                                                  \
 	} while (false)
-
-/**
- * Bind the value of @p expr to a new reference @p name, or return its error.
- *
- * ```cpp
- * ZEST_TRY_ASSIGN(microvolts, battery.read_microvolts());
- * ```
- */
-#define ZEST_TRY_ASSIGN(name, expr)                                                                \
-	auto _zest_result_##name = (expr);                                                         \
-	if (!_zest_result_##name) {                                                                \
-		return ::zest::fail(_zest_result_##name.error());                                  \
-	}                                                                                          \
-	auto &name = *_zest_result_##name

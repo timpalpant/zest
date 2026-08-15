@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <zest/error.hpp>
+
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/rtio/rtio.h>
 
@@ -41,16 +43,16 @@ class SensorFrame
 
 	/** Decode one frame for a channel into its Zephyr sensor data type. */
 	template <typename Data>
-	[[nodiscard]] std::expected<Data, int> decode(sensor_chan_spec channel) const noexcept
+	[[nodiscard]] Result<Data> decode(sensor_chan_spec channel) const noexcept
 	{
 		Data output{};
 		std::uint32_t fit = 0U;
 		const int count = decoder_->decode(encoded_.data(), channel, &fit, 1U, &output);
 		if (count < 0) {
-			return std::unexpected(count);
+			return fail(count);
 		}
 		if (count == 0) {
-			return std::unexpected(-ENODATA);
+			return fail(-ENODATA);
 		}
 		return output;
 	}
@@ -75,7 +77,7 @@ class SensorReader
 	{
 	}
 
-	[[nodiscard]] std::expected<SensorFrame, int>
+	[[nodiscard]] Result<SensorFrame>
 	read(std::span<std::uint8_t> encoded_buffer) const noexcept;
 
       private:
@@ -95,10 +97,10 @@ class SensorBatch
 	}
 
 	/** Configure channels. The IODev copies them into its statically allocated capacity. */
-	[[nodiscard]] std::expected<void, int>
-	configure(const device &sensor, std::span<const sensor_chan_spec> channels) const noexcept;
+	[[nodiscard]] Result<> configure(const device &sensor,
+					 std::span<const sensor_chan_spec> channels) const noexcept;
 
-	[[nodiscard]] std::expected<SensorFrame, int>
+	[[nodiscard]] Result<SensorFrame>
 	read(std::span<std::uint8_t> encoded_buffer) const noexcept
 	{
 		return reader_.read(encoded_buffer);
@@ -121,7 +123,7 @@ class AsyncSensorFrame
 	~AsyncSensorFrame() noexcept;
 
 	template <typename Data>
-	[[nodiscard]] std::expected<Data, int> decode(sensor_chan_spec channel) const noexcept
+	[[nodiscard]] Result<Data> decode(sensor_chan_spec channel) const noexcept
 	{
 		return SensorFrame{*decoder_, {buffer_, length_}}.decode<Data>(channel);
 	}
@@ -165,14 +167,13 @@ class AsyncSensorReader
 	{
 	}
 
-	[[nodiscard]] std::expected<void, int> submit(void *userdata = nullptr) const noexcept;
-	[[nodiscard]] std::expected<std::optional<AsyncSensorFrame>, int>
-	try_receive() const noexcept;
-	[[nodiscard]] std::expected<AsyncSensorFrame, int> receive() const noexcept;
+	[[nodiscard]] Result<> submit(void *userdata = nullptr) const noexcept;
+	/** Return the next frame, or `errors::would_block` when none is ready. */
+	[[nodiscard]] Result<AsyncSensorFrame> try_receive() const noexcept;
+	[[nodiscard]] Result<AsyncSensorFrame> receive() const noexcept;
 
       private:
-	[[nodiscard]] std::expected<AsyncSensorFrame, int>
-	consume(rtio_cqe &completion) const noexcept;
+	[[nodiscard]] Result<AsyncSensorFrame> consume(rtio_cqe &completion) const noexcept;
 
 	const rtio_iodev *iodev_;
 	rtio *context_;
@@ -184,7 +185,7 @@ template <typename Data, std::size_t EncodedBufferSize> class SensorChannel
 {
       public:
 	using value_type = Data;
-	using error_type = int;
+	using error_type = Error;
 
 	static_assert(EncodedBufferSize > 0U, "a sensor channel needs an encoded buffer");
 
@@ -195,11 +196,11 @@ template <typename Data, std::size_t EncodedBufferSize> class SensorChannel
 	{
 	}
 
-	[[nodiscard]] std::expected<Data, int> read() noexcept
+	[[nodiscard]] Result<Data> read() noexcept
 	{
 		const auto frame = reader_.read(buffer_);
 		if (!frame) {
-			return std::unexpected(frame.error());
+			return fail(frame.error());
 		}
 		return frame->template decode<Data>(channel_);
 	}
@@ -210,7 +211,7 @@ template <typename Data, std::size_t EncodedBufferSize> class SensorChannel
 	std::array<std::uint8_t, EncodedBufferSize> buffer_{};
 };
 
-/** Periodically invoke a value source whose read() returns std::expected. */
+/** Periodically invoke a value source whose read() returns Result. */
 template <typename Source, typename Clock = std::chrono::steady_clock> class PeriodicSampler
 {
       public:
@@ -229,7 +230,7 @@ template <typename Source, typename Clock = std::chrono::steady_clock> class Per
 	}
 
 	/** Return no sample until due; the first call samples immediately. */
-	[[nodiscard]] std::expected<std::optional<Sample<value_type>>, error_type>
+	[[nodiscard]] Result<std::optional<Sample<value_type>>, error_type>
 	poll(time_point now = clock::now()) noexcept
 	{
 		if (started_ && now < next_) {

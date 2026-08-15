@@ -74,7 +74,7 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 	}
 
 	/** Initialize the configured Zephyr settings backend. */
-	Result<> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		if (!valid_) {
 			return fail(errors::name_too_long);
@@ -90,7 +90,7 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 	 * anything registered with `SETTINGS_STATIC_HANDLER` --- only become visible
 	 * after this call.
 	 */
-	Result<> load() const noexcept
+	[[nodiscard]] Result<> load() const noexcept
 	{
 		if (!valid_) {
 			return fail(errors::name_too_long);
@@ -99,16 +99,20 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 	}
 
 	/** Flush pending changes to the backend, where the backend buffers. */
-	Result<> commit() const noexcept
+	[[nodiscard]] Result<> commit() const noexcept
 	{
 		return check(settings_commit_subtree(root_.data()));
 	}
 
 	/** Store raw bytes. */
-	Result<> set(std::string_view key,
+	[[nodiscard]] Result<> set(std::string_view key,
 				   std::span<const std::byte> value) const noexcept
 	{
-		ZEST_TRY_ASSIGN(name, make_name(key));
+		auto name_result = make_name(key);
+		if (!name_result) {
+			return fail(name_result.error());
+		}
+		auto name = *name_result;
 		return check(settings_save_one(name.data(), value.data(), value.size()));
 	}
 
@@ -118,23 +122,27 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 	 * The characters are persisted, not the view. Without this overload the
 	 * generic one would serialize the view object itself.
 	 */
-	Result<> set(std::string_view key, std::string_view value) const noexcept
+	[[nodiscard]] Result<> set(std::string_view key, std::string_view value) const noexcept
 	{
 		return set(key, std::as_bytes(std::span{value.data(), value.size()}));
 	}
 
 	/** Store a value byte for byte. */
 	template <TriviallySerializable T>
-	Result<> set(std::string_view key, const T &value) const noexcept
+	[[nodiscard]] Result<> set(std::string_view key, const T &value) const noexcept
 	{
 		return set(key, std::as_bytes(std::span{&value, 1U}));
 	}
 
 	/** Read raw bytes, returning the number written to @p destination. */
-	Result<std::size_t> get(std::string_view key,
+	[[nodiscard]] Result<std::size_t> get(std::string_view key,
 					      std::span<std::byte> destination) const noexcept
 	{
-		ZEST_TRY_ASSIGN(name, make_name(key));
+		auto name_result = make_name(key);
+		if (!name_result) {
+			return fail(name_result.error());
+		}
+		auto name = *name_result;
 		const ssize_t size =
 			settings_load_one(name.data(), destination.data(), destination.size());
 		if (size < 0) {
@@ -147,20 +155,28 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 	}
 
 	/** Read text into @p destination and return a view of what was read. */
-	Result<std::string_view>
+	[[nodiscard]] Result<std::string_view>
 	get_string(std::string_view key, std::span<char> destination) const noexcept
 	{
-		ZEST_TRY_ASSIGN(size, get(key, std::as_writable_bytes(destination)));
+		auto size_result = get(key, std::as_writable_bytes(destination));
+		if (!size_result) {
+			return fail(size_result.error());
+		}
+		auto size = *size_result;
 		return std::string_view{destination.data(), size};
 	}
 
 	/** Read a value byte for byte. */
 	template <TriviallySerializable T>
-	Result<T> get(std::string_view key) const noexcept
+	[[nodiscard]] Result<T> get(std::string_view key) const noexcept
 	{
 		T value{};
 		auto bytes = std::as_writable_bytes(std::span{&value, 1U});
-		ZEST_TRY_ASSIGN(size, get(key, bytes));
+		auto size_result = get(key, bytes);
+		if (!size_result) {
+			return fail(size_result.error());
+		}
+		auto size = *size_result;
 		if (size != sizeof(T)) {
 			return fail(errors::message_size);
 		}
@@ -175,9 +191,13 @@ template <std::size_t MaximumNameLength = 64U> class Settings
 		return size.has_value() || size.error() == errors::no_buffer_space;
 	}
 
-	Result<> erase(std::string_view key) const noexcept
+	[[nodiscard]] Result<> erase(std::string_view key) const noexcept
 	{
-		ZEST_TRY_ASSIGN(name, make_name(key));
+		auto name_result = make_name(key);
+		if (!name_result) {
+			return fail(name_result.error());
+		}
+		auto name = *name_result;
 		return check(settings_delete(name.data()));
 	}
 
@@ -190,7 +210,7 @@ template <std::size_t MaximumNameLength = 64U> class Settings
       private:
 	using Name = std::array<char, MaximumNameLength + 1U>;
 
-	constexpr Result<Name> make_name(std::string_view key) const noexcept
+	[[nodiscard]] constexpr Result<Name> make_name(std::string_view key) const noexcept
 	{
 		if (!valid_) {
 			return fail(errors::name_too_long);

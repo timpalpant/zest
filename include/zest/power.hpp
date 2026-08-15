@@ -20,7 +20,7 @@ class PowerManager
 {
       public:
 	/** Force the next idle transition to a specific state. */
-	static Result<> force_next(std::uint8_t cpu, pm_state state,
+	[[nodiscard]] static Result<> force_next(std::uint8_t cpu, pm_state state,
 						 std::uint8_t substate_id = 0U,
 						 std::uint32_t minimum_residency_us = 0U,
 						 std::uint32_t exit_latency_us = 0U) noexcept;

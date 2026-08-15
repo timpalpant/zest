@@ -8,7 +8,7 @@
 
 #include <concepts>
 #include <cstdint>
-#include <expected>
+#include <zest/error.hpp>
 #include <type_traits>
 
 namespace zest
@@ -121,7 +121,7 @@ class LinearMap
 	}
 
 	/** Map @p value, extrapolating outside the input range. */
-	[[nodiscard]] constexpr std::expected<Real, TransformError> map(T value) const noexcept
+	[[nodiscard]] constexpr Result<Real, TransformError> map(T value) const noexcept
 	{
 		if (input_min_ == input_max_) {
 			return std::unexpected(TransformError::empty_input_range);
@@ -134,8 +134,7 @@ class LinearMap
 	}
 
 	/** Map @p value, clamping the result to the output range. */
-	[[nodiscard]] constexpr std::expected<Real, TransformError>
-	map_clamped(T value) const noexcept
+	[[nodiscard]] constexpr Result<Real, TransformError> map_clamped(T value) const noexcept
 	{
 		const auto mapped = map(value);
 		if (!mapped) {
@@ -161,8 +160,8 @@ class LinearMap
  */
 template <std::integral T, typename Accumulator = std::int64_t>
 	requires std::is_signed_v<Accumulator>
-[[nodiscard]] constexpr std::expected<T, TransformError>
-integer_map(T value, T input_min, T input_max, T output_min, T output_max) noexcept
+[[nodiscard]] constexpr Result<T, TransformError> integer_map(T value, T input_min, T input_max,
+							      T output_min, T output_max) noexcept
 {
 	if (input_min == input_max) {
 		return std::unexpected(TransformError::empty_input_range);

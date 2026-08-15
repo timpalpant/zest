@@ -88,8 +88,6 @@ enum class DnsError {
 [[nodiscard]] DnsError dns_error_from(int status) noexcept;
 
 /** The result of a resolution attempt. */
-template <typename T> using DnsResult = std::expected<T, DnsError>;
-
 /** Socket transport requested from DnsResolver. */
 enum class SocketType {
 	tcp,
@@ -136,7 +134,7 @@ class DnsResolver
 {
       public:
 	template <std::size_t Capacity = 4U>
-	DnsResult<ResolvedAddresses<Capacity>>
+	[[nodiscard]] Result<ResolvedAddresses<Capacity>, DnsError>
 	resolve(std::string_view host, std::uint16_t port, SocketType type = SocketType::tcp,
 		int family = AF_UNSPEC) const noexcept
 	{
@@ -200,16 +198,16 @@ class UdpSocket
 	UdpSocket(UdpSocket &&other) noexcept;
 	UdpSocket &operator=(UdpSocket &&other) noexcept;
 
-	Result<> open(int family = AF_INET) noexcept;
-	Result<> bind(const ResolvedAddress &address) noexcept;
-	Result<> connect(const ResolvedAddress &address) noexcept;
-	Result<std::size_t> send(std::span<const std::byte> data) noexcept;
-	Result<std::size_t> send_to(std::span<const std::byte> data,
+	[[nodiscard]] Result<> open(int family = AF_INET) noexcept;
+	[[nodiscard]] Result<> bind(const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<> connect(const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<std::size_t> send(std::span<const std::byte> data) noexcept;
+	[[nodiscard]] Result<std::size_t> send_to(std::span<const std::byte> data,
 						  const ResolvedAddress &address) noexcept;
-	Result<std::size_t> receive(std::span<std::byte> buffer) noexcept;
+	[[nodiscard]] Result<std::size_t> receive(std::span<std::byte> buffer) noexcept;
 
 	/** Bound the time a blocking receive may take. */
-	Result<> set_receive_timeout(std::chrono::milliseconds timeout) noexcept;
+	[[nodiscard]] Result<> set_receive_timeout(std::chrono::milliseconds timeout) noexcept;
 
 	void close() noexcept;
 
@@ -237,15 +235,15 @@ class TcpSocket
 	TcpSocket(TcpSocket &&other) noexcept;
 	TcpSocket &operator=(TcpSocket &&other) noexcept;
 
-	Result<> open(int family = AF_INET) noexcept;
-	Result<> connect(const ResolvedAddress &address) noexcept;
-	Result<std::size_t> send_all(std::span<const std::byte> data) noexcept;
-	Result<std::size_t> receive(std::span<std::byte> buffer) noexcept;
-	Result<> shutdown() noexcept;
+	[[nodiscard]] Result<> open(int family = AF_INET) noexcept;
+	[[nodiscard]] Result<> connect(const ResolvedAddress &address) noexcept;
+	[[nodiscard]] Result<std::size_t> send_all(std::span<const std::byte> data) noexcept;
+	[[nodiscard]] Result<std::size_t> receive(std::span<std::byte> buffer) noexcept;
+	[[nodiscard]] Result<> shutdown() noexcept;
 
-	Result<> set_receive_timeout(std::chrono::milliseconds timeout) noexcept;
+	[[nodiscard]] Result<> set_receive_timeout(std::chrono::milliseconds timeout) noexcept;
 	/** Disable Nagle, for a request/response protocol that sends small frames. */
-	Result<> set_no_delay(bool enabled) noexcept;
+	[[nodiscard]] Result<> set_no_delay(bool enabled) noexcept;
 
 	void close() noexcept;
 

@@ -44,12 +44,12 @@ class LedPatternPlayer
 	{
 	}
 
-	Result<> init() noexcept
+	[[nodiscard]] Result<> init() noexcept
 	{
 		return output_.init(GpioState::inactive);
 	}
 
-	Result<> start(std::span<const LedPatternStep> pattern, bool repeat = true,
+	[[nodiscard]] Result<> start(std::span<const LedPatternStep> pattern, bool repeat = true,
 				     time_point now = clock::now()) noexcept
 	{
 		if (pattern.empty()) {
@@ -83,7 +83,7 @@ class LedPatternPlayer
 	 * A long gap since the previous call is skipped over rather than replayed
 	 * step by step, so a delayed event loop does not produce a burst of writes.
 	 */
-	Result<> update(time_point now = clock::now()) noexcept
+	[[nodiscard]] Result<> update(time_point now = clock::now()) noexcept
 	{
 		if (count_ == 0U || now < deadline_) {
 			return {};
@@ -124,7 +124,7 @@ class LedPatternPlayer
 		return {};
 	}
 
-	Result<> stop() noexcept
+	[[nodiscard]] Result<> stop() noexcept
 	{
 		count_ = 0U;
 		index_ = 0U;

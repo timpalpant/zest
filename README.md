@@ -96,8 +96,8 @@ retry, ring buffer, callables and the kernel wrappers — need only
 
 ## Errors
 
-Every fallible operation returns `zest::Result<T>`, which is
-`std::expected<T, zest::Error>`. `Error` wraps a negative errno, costs exactly
+Every fallible operation returns `zest::Result<T, E>`, which is
+`std::expected<T, E>` and defaults `E` to `zest::Error`. `Error` wraps a negative errno, costs exactly
 what an `int` costs, and always has a description:
 
 ```cpp
@@ -105,8 +105,8 @@ if (auto microvolts = battery.read_microvolts()) {
     LOG_INF("battery %d uV", microvolts->count());
 } else {
     LOG_ERR("battery read failed: %.*s",
-            static_cast<int>(millivolts.error().message().size()),
-            millivolts.error().message().data());
+            static_cast<int>(microvolts.error().message().size()),
+            microvolts.error().message().data());
 }
 ```
 
@@ -117,15 +117,18 @@ comparisons read plainly:
 if (result.error() == zest::errors::timed_out) { /* ... */ }
 ```
 
-`ZEST_TRY` and `ZEST_TRY_ASSIGN` propagate failures without nesting:
+`ZEST_TRY` propagates results whose value can be discarded. C++23 has no
+standard value-propagation operator, so value-returning results use an explicit
+check:
 
 ```cpp
 zest::Result<> start() noexcept
 {
     ZEST_TRY(channel.init());
     ZEST_TRY(pump.init());
-    ZEST_TRY_ASSIGN(microvolts, channel.read_microvolts());
-    return controller.begin(microvolts);
+    auto microvolts = channel.read_microvolts();
+    if (!microvolts) return zest::fail(microvolts.error());
+    return controller.begin(*microvolts);
 }
 ```
 
@@ -169,7 +172,8 @@ zest::Result<> sample() noexcept
 {
     ZEST_TRY(analog.init());
     ZEST_TRY(led.init());
-    ZEST_TRY_ASSIGN(microvolts, analog.read_average_microvolts(16));
+    auto microvolts = analog.read_average_microvolts(16);
+    if (!microvolts) return zest::fail(microvolts.error());
     const zest::Millivolts millivolts = zest::quantity_cast<zest::Millivolts>(*microvolts);
     return led.set(millivolts > 1000_mV ? zest::GpioState::active
                                         : zest::GpioState::inactive);
@@ -312,8 +316,9 @@ zest::Poller<1> poller;
 ZEST_TRY(poller.add(client.poll_fd(), zest::PollEvent::readable));
 
 for (;;) {
-    ZEST_TRY_ASSIGN(ready, poller.wait(client.keepalive_time_left()));
-    if (ready > 0 && zest::has_event(poller.events(0), zest::PollEvent::readable)) {
+    auto ready = poller.wait(client.keepalive_time_left());
+    if (!ready) return zest::fail(ready.error());
+    if (*ready > 0 && zest::has_event(poller.events(0), zest::PollEvent::readable)) {
         ZEST_TRY(client.input());
     }
     ZEST_TRY(client.keep_alive());
@@ -331,15 +336,13 @@ acknowledgements can be correlated.
 using namespace std::chrono_literals;
 
 std::array<std::byte, 2048> body{};
-constexpr sec_tag_t ca_tags[] = {42};
-
 zest::HttpClient client{zest::HttpClient::Options{
     .timeout = 10s,
     .user_agent = "my-device/1.0",
     .keep_alive = true,            // reuse the TLS session across posts
     .truncation_is_error = true,   // a body that did not fit is a failure
     .peer_verification = zest::HttpClient::PeerVerification::required,
-    .security_tags = ca_tags,
+    .security_tags = {42},
 }};
 
 if (auto response = client.get("https://example.com/", body)) {
@@ -387,11 +390,13 @@ Pick a format at the call site, or pin one for the build:
 constexpr auto kFormat = zest::Format::cbor;
 
 std::array<std::byte, 128> buffer{};
-ZEST_TRY_ASSIGN(body, zest::serialize<kFormat>(reading, buffer));
-ZEST_TRY(client.publish("sensor/1", body));
+auto body = zest::serialize<kFormat>(reading, buffer);
+if (!body) return zest::fail(body.error());
+ZEST_TRY(client.publish("sensor/1", *body));
 
-ZEST_TRY_ASSIGN(parsed, zest::deserialize<kFormat, Reading>(payload));
-if (parsed.has("cc")) {                 // absent and zero are different things
+auto parsed = zest::deserialize<kFormat, Reading>(payload);
+if (!parsed) return zest::fail(parsed.error());
+if (parsed->has("cc")) {                 // absent and zero are different things
     use(parsed->centi_celsius);
 }
 ```

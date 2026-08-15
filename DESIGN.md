@@ -65,7 +65,8 @@ initialization, typed results, consistent errors, and composable behavior.
 
 ## 1. The error model
 
-`Result<T>` is `std::expected<T, Error>`, and `Result<>` spells the void case.
+`Result<T, E>` is `std::expected<T, E>`, defaults `E` to `Error`, and `Result<>`
+spells the void case.
 `Error` wraps a negative errno in a trivially copyable type the size of an `int`,
 so returning one costs nothing extra.
 
@@ -89,8 +90,9 @@ reads as `-ENOENT`, and `DNS_EAI_MEMORY` is `-12`, which reads as `-ENOMEM`. As 
 bare `int` the two domains are indistinguishable.
 
 `check()`, `check_value()` and `check_positive()` translate the
-`rc < 0 ? error : value` shape that nearly every Zephyr call has, and `ZEST_TRY` /
-`ZEST_TRY_ASSIGN` propagate without nesting. `Error::message()` is Kconfig-gated
+`rc < 0 ? error : value` shape that nearly every Zephyr call has. `ZEST_TRY`
+propagates failures when the successful value is discarded; C++23 has no
+standard value-binding propagation operator. `Error::message()` is Kconfig-gated
 so a flash-tight image can drop the table.
 
 ## 2. Units
@@ -144,8 +146,10 @@ alternative wherever one is exact:
 zest::AdcChannel channel{ADC_DT_SPEC_GET(DT_ALIAS(sensor))};
 
 ZEST_TRY(channel.init());
-ZEST_TRY_ASSIGN(raw, channel.read_raw());
-ZEST_TRY_ASSIGN(microvolts, channel.read_average_microvolts(16));
+auto raw = channel.read_raw();
+if (!raw) return zest::fail(raw.error());
+auto microvolts = channel.read_average_microvolts(16);
+if (!microvolts) return zest::fail(microvolts.error());
 const zest::Millivolts millivolts = zest::quantity_cast<zest::Millivolts>(*microvolts);
 ```
 

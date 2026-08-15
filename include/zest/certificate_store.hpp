@@ -46,7 +46,7 @@ class StaticCredential
 	StaticCredential &operator=(StaticCredential &&) = delete;
 
 	/** Register @p credential, which must have static lifetime. */
-	Result<> add(sec_tag_t tag, tls_credential_type type,
+	[[nodiscard]] Result<> add(sec_tag_t tag, tls_credential_type type,
 				   std::span<const std::byte> credential) noexcept
 	{
 		if (registered_) {
@@ -64,7 +64,7 @@ class StaticCredential
 		return {};
 	}
 
-	Result<> remove() noexcept
+	[[nodiscard]] Result<> remove() noexcept
 	{
 		if (!registered_) {
 			return {};
@@ -119,7 +119,7 @@ template <std::size_t Capacity> class OwnedCredential
 	OwnedCredential(OwnedCredential &&) = delete;
 	OwnedCredential &operator=(OwnedCredential &&) = delete;
 
-	Result<> add(sec_tag_t tag, tls_credential_type type,
+	[[nodiscard]] Result<> add(sec_tag_t tag, tls_credential_type type,
 				   std::span<const std::byte> credential) noexcept
 	{
 		if (registered_) {
@@ -146,7 +146,7 @@ template <std::size_t Capacity> class OwnedCredential
 		return {};
 	}
 
-	Result<> remove() noexcept
+	[[nodiscard]] Result<> remove() noexcept
 	{
 		if (!registered_) {
 			return {};

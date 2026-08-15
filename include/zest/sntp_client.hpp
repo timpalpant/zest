@@ -25,7 +25,7 @@ struct NetworkTime {
 class SntpClient
 {
       public:
-	Result<NetworkTime>
+	[[nodiscard]] Result<NetworkTime>
 	query(std::string_view server,
 	      std::chrono::milliseconds timeout = std::chrono::seconds{10}) const noexcept;
 };
@@ -34,7 +34,7 @@ class SntpClient
 class TimeSynchronizer
 {
       public:
-	Result<NetworkTime>
+	[[nodiscard]] Result<NetworkTime>
 	synchronize(std::string_view server,
 		    std::chrono::milliseconds timeout = std::chrono::seconds{10}) const noexcept;
 

@@ -124,7 +124,11 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 
 	std::int64_t total = 0;
 	for (std::size_t i = 0; i < samples; ++i) {
-		ZEST_TRY_ASSIGN(raw, read_raw());
+		auto raw_result = read_raw();
+		if (!raw_result) {
+			return fail(raw_result.error());
+		}
+		auto raw = *raw_result;
 		total += raw;
 	}
 	return static_cast<std::int32_t>(total / static_cast<std::int64_t>(samples));
@@ -132,13 +136,21 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 
 Result<Microvolts> AdcChannel::read_microvolts() const noexcept
 {
-	ZEST_TRY_ASSIGN(raw, read_raw());
+	auto raw_result = read_raw();
+	if (!raw_result) {
+		return fail(raw_result.error());
+	}
+	auto raw = *raw_result;
 	return to_microvolts(raw);
 }
 
 Result<Microvolts> AdcChannel::read_average_microvolts(std::size_t samples) const noexcept
 {
-	ZEST_TRY_ASSIGN(raw, read_average_raw(samples));
+	auto raw_result = read_average_raw(samples);
+	if (!raw_result) {
+		return fail(raw_result.error());
+	}
+	auto raw = *raw_result;
 	return to_microvolts(raw);
 }
 

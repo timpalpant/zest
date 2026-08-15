@@ -46,7 +46,7 @@
  *             ZEST_MEMBER(Reading, charging),
  *             ZEST_MEMBER(Reading, label));
  *
- * ZEST_TRY_ASSIGN(body, zest::serialize<zest::Format::cbor>(reading, buffer));
+ * auto body = zest::serialize<zest::Format::cbor>(reading, buffer);
  * ```
  *
  * Deducing the representation from the member type is the point: a hand-written

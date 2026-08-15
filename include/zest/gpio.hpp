@@ -39,10 +39,10 @@ class GpioInput
 	}
 
 	/** Configure the pin as an input. */
-	Result<> init() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept;
 
 	/** Read the pin's logical active/inactive state. */
-	Result<GpioState> get() const noexcept;
+	[[nodiscard]] Result<GpioState> get() const noexcept;
 
 	[[nodiscard]] constexpr const gpio_dt_spec &native_spec() const noexcept
 	{
@@ -80,14 +80,14 @@ class GpioOutput
 	 * `read_pin()` works. Not every pin or SoC can drive and sense at once, so
 	 * this is opt-in rather than the default.
 	 */
-	Result<> init(GpioState initial = GpioState::inactive,
+	[[nodiscard]] Result<> init(GpioState initial = GpioState::inactive,
 				    bool enable_readback = false) noexcept;
 
 	/** Drive the pin to a logical state. */
-	Result<> set(GpioState state) noexcept;
+	[[nodiscard]] Result<> set(GpioState state) noexcept;
 
 	/** Drive the pin to the opposite of its current state. */
-	Result<> toggle() noexcept;
+	[[nodiscard]] Result<> toggle() noexcept;
 
 	/** The last state successfully driven. Exact, and cannot fail. */
 	[[nodiscard]] constexpr GpioState state() const noexcept
@@ -102,7 +102,7 @@ class GpioOutput
 	 * already include `GPIO_INPUT`. Without one of those the result is
 	 * meaningless on most hardware, so prefer `state()`.
 	 */
-	Result<GpioState> read_pin() const noexcept;
+	[[nodiscard]] Result<GpioState> read_pin() const noexcept;
 
 	[[nodiscard]] constexpr bool readback_enabled() const noexcept
 	{

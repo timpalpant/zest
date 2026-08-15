@@ -31,10 +31,11 @@
  * constexpr auto kFormat = zest::Format::cbor;
  *
  * std::array<std::byte, 128> buffer{};
- * ZEST_TRY_ASSIGN(body, zest::serialize<kFormat>(reading, buffer));
- * ZEST_TRY(client.publish("sensor/1", body));
+ * auto body = zest::serialize<kFormat>(reading, buffer);
+ * if (!body) return zest::fail(body.error());
+ * ZEST_TRY(client.publish("sensor/1", *body));
  *
- * ZEST_TRY_ASSIGN(parsed, zest::deserialize<kFormat, Reading>(payload));
+ * auto parsed = zest::deserialize<kFormat, Reading>(payload);
  * ```
  *
  * The two formats are not equivalent, and where they differ CBOR is the better
@@ -68,7 +69,7 @@ enum class Format : std::uint8_t {
  * `HttpClient::post()`.
  */
 template <Format F, Serializable T>
-Result<std::span<const std::byte>> serialize(const T &value,
+[[nodiscard]] Result<std::span<const std::byte>> serialize(const T &value,
 							   std::span<std::byte> buffer) noexcept
 {
 	if constexpr (F == Format::json) {
@@ -95,7 +96,7 @@ Result<std::span<const std::byte>> serialize(const T &value,
  * decoder leaves it untouched.
  */
 template <Format F, Serializable T>
-Result<Parsed<T>> deserialize(std::span<std::byte> payload) noexcept
+[[nodiscard]] Result<Parsed<T>> deserialize(std::span<std::byte> payload) noexcept
 {
 	if constexpr (F == Format::json) {
 #if defined(CONFIG_ZEST_JSON)

@@ -7,14 +7,15 @@
 #pragma once
 
 #include <zest/error.hpp>
-#include <zest/function.hpp>
 
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #if defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
 #include <zephyr/net/tls_credentials.h>
@@ -35,6 +36,12 @@ enum class HttpMethod {
 struct HttpHeader {
 	std::string_view name;
 	std::string_view value;
+};
+
+/** An owning header used for configuration retained by an HttpClient. */
+struct OwnedHttpHeader {
+	std::string name;
+	std::string value;
 };
 
 /** Which stage of the request failed. */
@@ -73,8 +80,6 @@ struct HttpError {
 };
 
 /** The result of an HTTP request. */
-template <typename T> using HttpResult = std::expected<T, HttpError>;
-
 struct HttpResponse {
 	std::uint16_t status_code{};
 	std::span<const std::byte> body{};
@@ -88,9 +93,14 @@ struct HttpResponse {
 	 */
 	bool body_truncated{};
 
-	[[nodiscard]] bool ok() const noexcept
+	[[nodiscard]] bool is_success() const noexcept
 	{
-		return status_code >= 200U && status_code < 400U;
+		return status_code >= 200U && status_code < 300U;
+	}
+
+	[[nodiscard]] bool is_redirect() const noexcept
+	{
+		return status_code >= 300U && status_code < 400U;
 	}
 
 	[[nodiscard]] std::string_view text() const noexcept
@@ -100,6 +110,7 @@ struct HttpResponse {
 };
 
 struct HttpRequest {
+	/** All views are borrowed only for the duration of the synchronous request call. */
 	HttpMethod method{HttpMethod::get};
 	std::string_view url;
 	std::span<const HttpHeader> headers{};
@@ -124,13 +135,11 @@ class HttpClient
 		required,
 	};
 
-	/** Receives each response header as it is parsed. */
-	using HeaderHandler = FunctionRef<void(std::string_view name, std::string_view value)>;
-
 	struct Options {
+		/** Retained configuration owns its variable-length strings and collections. */
 		std::chrono::milliseconds timeout{15'000};
-		std::string_view user_agent{"zest-http/1.0"};
-		std::span<const HttpHeader> default_headers{};
+		std::string user_agent{"zest-http/1.0"};
+		std::vector<OwnedHttpHeader> default_headers{};
 		/**
 		 * Keep the connection open for a following request to the same host.
 		 *
@@ -143,58 +152,57 @@ class HttpClient
 		bool truncation_is_error{false};
 #if defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
 		PeerVerification peer_verification{PeerVerification::required};
-		std::span<const sec_tag_t> security_tags{};
+		std::vector<sec_tag_t> security_tags{};
 #endif
 	};
+	/*
+	 * Constructing or changing retained string/vector configuration may allocate.
+	 * request() itself uses caller storage and fixed internal buffers.
+	 */
 
-	HttpClient() noexcept;
+	HttpClient();
 	explicit HttpClient(Options options) noexcept;
 	~HttpClient() noexcept;
 
 	HttpClient(const HttpClient &) = delete;
 	HttpClient &operator=(const HttpClient &) = delete;
 
-	HttpResult<HttpResponse>
+	[[nodiscard]] Result<HttpResponse, HttpError>
 	request(const HttpRequest &request, std::span<std::byte> response_buffer) noexcept;
 
-	/** Issue a request and receive each response header as it is parsed. */
-	HttpResult<HttpResponse> request(const HttpRequest &request,
-						       std::span<std::byte> response_buffer,
-						       HeaderHandler on_header) noexcept;
-
-	HttpResult<HttpResponse>
+	[[nodiscard]] Result<HttpResponse, HttpError>
 	get(std::string_view url, std::span<std::byte> response_buffer,
 	    std::span<const HttpHeader> headers = {}) noexcept;
 
-	HttpResult<HttpResponse>
+	[[nodiscard]] Result<HttpResponse, HttpError>
 	post(std::string_view url, std::span<const std::byte> body,
 	     std::span<std::byte> response_buffer,
 	     std::string_view content_type = "application/octet-stream",
 	     std::span<const HttpHeader> headers = {}) noexcept;
 
-	HttpResult<HttpResponse>
+	[[nodiscard]] Result<HttpResponse, HttpError>
 	put(std::string_view url, std::span<const std::byte> body,
 	    std::span<std::byte> response_buffer,
 	    std::string_view content_type = "application/octet-stream",
 	    std::span<const HttpHeader> headers = {}) noexcept;
 
-	HttpResult<HttpResponse>
+	[[nodiscard]] Result<HttpResponse, HttpError>
 	patch(std::string_view url, std::span<const std::byte> body,
 	      std::span<std::byte> response_buffer,
 	      std::string_view content_type = "application/octet-stream",
 	      std::span<const HttpHeader> headers = {}) noexcept;
 
-	HttpResult<HttpResponse>
+	[[nodiscard]] Result<HttpResponse, HttpError>
 	delete_request(std::string_view url, std::span<std::byte> response_buffer,
 		       std::span<const HttpHeader> headers = {}) noexcept;
 
 	void set_timeout(std::chrono::milliseconds timeout) noexcept;
-	void set_user_agent(std::string_view user_agent) noexcept;
+	void set_user_agent(std::string user_agent);
 	void set_keep_alive(bool enabled) noexcept;
 
 #if defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
 	void set_peer_verification(PeerVerification verification,
-				   std::span<const sec_tag_t> security_tags = {}) noexcept;
+				   std::span<const sec_tag_t> security_tags = {});
 #endif
 
 	/** Close any connection kept open by `keep_alive`. */

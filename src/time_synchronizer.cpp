@@ -17,7 +17,11 @@ namespace zest
 Result<NetworkTime> TimeSynchronizer::synchronize(std::string_view server,
 						  std::chrono::milliseconds timeout) const noexcept
 {
-	ZEST_TRY_ASSIGN(network_time, client_.query(server, timeout));
+	auto network_time_result = client_.query(server, timeout);
+	if (!network_time_result) {
+		return fail(network_time_result.error());
+	}
+	auto network_time = *network_time_result;
 
 	const auto since_epoch = network_time.time.time_since_epoch();
 	const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(since_epoch);

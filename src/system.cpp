@@ -50,7 +50,11 @@ Result<std::span<const std::byte>> DeviceIdentity::read(std::span<std::byte> des
 Result<std::string_view> DeviceIdentity::read_hex(std::span<char> destination) noexcept
 {
 	std::array<std::byte, 16> raw{};
-	ZEST_TRY_ASSIGN(id, read(raw));
+	auto id_result = read(raw);
+	if (!id_result) {
+		return fail(id_result.error());
+	}
+	auto id = *id_result;
 
 	if (destination.size() < id.size() * 2U + 1U) {
 		return fail(errors::no_buffer_space);
@@ -97,7 +101,11 @@ Result<WatchdogChannel> WatchdogDevice::install(std::chrono::milliseconds timeou
 		.callback = nullptr,
 		.flags = reset_flags,
 	};
-	ZEST_TRY_ASSIGN(channel, check_value(wdt_install_timeout(device_, &config)));
+	auto channel_result = check_value(wdt_install_timeout(device_, &config));
+	if (!channel_result) {
+		return fail(channel_result.error());
+	}
+	auto channel = *channel_result;
 	return WatchdogChannel{this, channel};
 }
 
@@ -163,7 +171,11 @@ Result<> Rtc::set(const rtc_time &time) const noexcept
 
 Result<std::chrono::system_clock::time_point> Rtc::now() const noexcept
 {
-	ZEST_TRY_ASSIGN(value, get());
+	auto value_result = get();
+	if (!value_result) {
+		return fail(value_result.error());
+	}
+	auto value = *value_result;
 	tm broken{};
 	broken.tm_sec = value.tm_sec;
 	broken.tm_min = value.tm_min;

@@ -17,30 +17,28 @@
 namespace zest
 {
 
-std::expected<SensorFrame, int>
-SensorReader::read(std::span<std::uint8_t> encoded_buffer) const noexcept
+Result<SensorFrame> SensorReader::read(std::span<std::uint8_t> encoded_buffer) const noexcept
 {
 	if (encoded_buffer.empty()) {
-		return std::unexpected(-EINVAL);
+		return fail(-EINVAL);
 	}
 	const int rc = sensor_read(iodev_, context_, encoded_buffer.data(), encoded_buffer.size());
 	if (rc < 0) {
-		return std::unexpected(rc);
+		return fail(rc);
 	}
 	return SensorFrame{*decoder_, encoded_buffer};
 }
 
-std::expected<void, int>
-SensorBatch::configure(const device &sensor,
-		       std::span<const sensor_chan_spec> channels) const noexcept
+Result<> SensorBatch::configure(const device &sensor,
+				std::span<const sensor_chan_spec> channels) const noexcept
 {
 	if (channels.empty()) {
-		return std::unexpected(-EINVAL);
+		return fail(-EINVAL);
 	}
 	const int rc =
 		sensor_reconfigure_read_iodev(iodev_, &sensor, channels.data(), channels.size());
 	if (rc < 0) {
-		return std::unexpected(rc);
+		return fail(rc);
 	}
 	return {};
 }
@@ -80,16 +78,16 @@ void AsyncSensorFrame::release() noexcept
 	length_ = 0U;
 }
 
-std::expected<void, int> AsyncSensorReader::submit(void *userdata) const noexcept
+Result<> AsyncSensorReader::submit(void *userdata) const noexcept
 {
 	const int rc = sensor_read_async_mempool(iodev_, context_, userdata);
 	if (rc < 0) {
-		return std::unexpected(rc);
+		return fail(rc);
 	}
 	return {};
 }
 
-std::expected<AsyncSensorFrame, int> AsyncSensorReader::consume(rtio_cqe &completion) const noexcept
+Result<AsyncSensorFrame> AsyncSensorReader::consume(rtio_cqe &completion) const noexcept
 {
 	const int result = completion.result;
 	void *userdata = completion.userdata;
@@ -104,29 +102,24 @@ std::expected<AsyncSensorFrame, int> AsyncSensorReader::consume(rtio_cqe &comple
 		if (buffer_result == 0 && buffer != nullptr) {
 			rtio_release_buffer(context_, buffer, length);
 		}
-		return std::unexpected(result);
+		return fail(result);
 	}
 	if (buffer_result < 0) {
-		return std::unexpected(buffer_result);
+		return fail(buffer_result);
 	}
 	return AsyncSensorFrame{*context_, *decoder_, buffer, length, userdata};
 }
 
-std::expected<std::optional<AsyncSensorFrame>, int> AsyncSensorReader::try_receive() const noexcept
+Result<AsyncSensorFrame> AsyncSensorReader::try_receive() const noexcept
 {
 	rtio_cqe *completion = rtio_cqe_consume(context_);
 	if (completion == nullptr) {
-		return std::optional<AsyncSensorFrame>{};
+		return fail(errors::would_block);
 	}
-
-	auto frame = consume(*completion);
-	if (!frame) {
-		return std::unexpected(frame.error());
-	}
-	return std::optional<AsyncSensorFrame>{std::move(*frame)};
+	return consume(*completion);
 }
 
-std::expected<AsyncSensorFrame, int> AsyncSensorReader::receive() const noexcept
+Result<AsyncSensorFrame> AsyncSensorReader::receive() const noexcept
 {
 	rtio_cqe *completion = rtio_cqe_consume_block(context_);
 	return consume(*completion);

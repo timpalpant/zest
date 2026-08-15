@@ -133,7 +133,7 @@ class Mutex
 
 	/** Acquire the mutex, giving up after @p wait. */
 	template <typename Rep, typename Period>
-	Result<> lock_for(std::chrono::duration<Rep, Period> wait) noexcept
+	[[nodiscard]] Result<> lock_for(std::chrono::duration<Rep, Period> wait) noexcept
 	{
 		return check(k_mutex_lock(&mutex_, detail::timeout(wait)));
 	}
@@ -209,7 +209,7 @@ class Semaphore
 
 	/** Wait for the semaphore. A `duration::max()` wait blocks forever. */
 	template <typename Rep, typename Period>
-	Result<> take(std::chrono::duration<Rep, Period> wait) noexcept
+	[[nodiscard]] Result<> take(std::chrono::duration<Rep, Period> wait) noexcept
 	{
 		return check(k_sem_take(&semaphore_, detail::timeout(wait)));
 	}
@@ -263,20 +263,20 @@ class MessageQueue
 
 	/** Append a message, waiting up to @p wait for room. */
 	template <typename Rep, typename Period>
-	Result<> put(const T &value, std::chrono::duration<Rep, Period> wait) noexcept
+	[[nodiscard]] Result<> put(const T &value, std::chrono::duration<Rep, Period> wait) noexcept
 	{
 		return check(k_msgq_put(&queue_, &value, detail::timeout(wait)));
 	}
 
 	/** Append a message without waiting. Safe to call from an ISR. */
-	Result<> try_put(const T &value) noexcept
+	[[nodiscard]] Result<> try_put(const T &value) noexcept
 	{
 		return check(k_msgq_put(&queue_, &value, K_NO_WAIT));
 	}
 
 	/** Remove the oldest message, waiting up to @p wait for one. */
 	template <typename Rep, typename Period>
-	Result<T> get(std::chrono::duration<Rep, Period> wait) noexcept
+	[[nodiscard]] Result<T> get(std::chrono::duration<Rep, Period> wait) noexcept
 	{
 		T value{};
 		if (const int rc = k_msgq_get(&queue_, &value, detail::timeout(wait)); rc != 0) {
@@ -286,7 +286,7 @@ class MessageQueue
 	}
 
 	/** Remove the oldest message without waiting. */
-	Result<T> try_get() noexcept
+	[[nodiscard]] Result<T> try_get() noexcept
 	{
 		T value{};
 		if (const int rc = k_msgq_get(&queue_, &value, K_NO_WAIT); rc != 0) {
@@ -296,7 +296,7 @@ class MessageQueue
 	}
 
 	/** Read the oldest message without removing it. */
-	Result<T> peek() const noexcept
+	[[nodiscard]] Result<T> peek() const noexcept
 	{
 		T value{};
 		if (const int rc = k_msgq_peek(const_cast<k_msgq *>(&queue_), &value); rc != 0) {
@@ -370,13 +370,13 @@ class WorkItem
 	}
 
 	/** Queue on the system workqueue. Safe to call from an ISR. */
-	Result<> submit() noexcept
+	[[nodiscard]] Result<> submit() noexcept
 	{
 		return check(k_work_submit(&work_));
 	}
 
 	/** Queue on a specific workqueue. */
-	Result<> submit_to(k_work_q &queue) noexcept
+	[[nodiscard]] Result<> submit_to(k_work_q &queue) noexcept
 	{
 		return check(k_work_submit_to_queue(&queue, &work_));
 	}
@@ -444,20 +444,20 @@ class DelayableWorkItem
 
 	/** Run after @p delay, keeping any deadline already pending. */
 	template <typename Rep, typename Period>
-	Result<> schedule(std::chrono::duration<Rep, Period> delay) noexcept
+	[[nodiscard]] Result<> schedule(std::chrono::duration<Rep, Period> delay) noexcept
 	{
 		return check(k_work_schedule(&work_, detail::timeout(delay)));
 	}
 
 	/** Run after @p delay, replacing any deadline already pending. */
 	template <typename Rep, typename Period>
-	Result<> reschedule(std::chrono::duration<Rep, Period> delay) noexcept
+	[[nodiscard]] Result<> reschedule(std::chrono::duration<Rep, Period> delay) noexcept
 	{
 		return check(k_work_reschedule(&work_, detail::timeout(delay)));
 	}
 
 	template <typename Rep, typename Period>
-	Result<> schedule_on(k_work_q &queue,
+	[[nodiscard]] Result<> schedule_on(k_work_q &queue,
 					   std::chrono::duration<Rep, Period> delay) noexcept
 	{
 		return check(k_work_schedule_for_queue(&queue, &work_, detail::timeout(delay)));
@@ -520,7 +520,7 @@ template <std::size_t StackSize> class WorkQueue
 	 * @p name is applied to the thread when Zephyr's thread names are enabled,
 	 * which is what makes a fault dump or the thread analyzer readable.
 	 */
-	Result<> start(int priority, const char *name = "zest_wq") noexcept
+	[[nodiscard]] Result<> start(int priority, const char *name = "zest_wq") noexcept
 	{
 		if (started_) {
 			return fail(errors::already);
@@ -537,7 +537,7 @@ template <std::size_t StackSize> class WorkQueue
 	}
 
 	/** Submit an item to this queue. */
-	Result<> submit(WorkItem &item) noexcept
+	[[nodiscard]] Result<> submit(WorkItem &item) noexcept
 	{
 		if (!started_) {
 			return fail(errors::not_connected);
@@ -546,7 +546,7 @@ template <std::size_t StackSize> class WorkQueue
 	}
 
 	template <typename Rep, typename Period>
-	Result<> schedule(DelayableWorkItem &item,
+	[[nodiscard]] Result<> schedule(DelayableWorkItem &item,
 					std::chrono::duration<Rep, Period> delay) noexcept
 	{
 		if (!started_) {
@@ -556,7 +556,7 @@ template <std::size_t StackSize> class WorkQueue
 	}
 
 	/** Wait for everything currently queued to finish. */
-	Result<> drain(bool block_submissions = false) noexcept
+	[[nodiscard]] Result<> drain(bool block_submissions = false) noexcept
 	{
 		if (!started_) {
 			return fail(errors::not_connected);
@@ -671,7 +671,7 @@ template <std::size_t StackSize> class StaticThread
 	 * are enabled; an unnamed thread is unidentifiable in a fault dump.
 	 */
 	template <typename F>
-	Result<> start(F &&entry, int priority, const char *name = nullptr,
+	[[nodiscard]] Result<> start(F &&entry, int priority, const char *name = nullptr,
 				     std::uint32_t options = 0U) noexcept
 	{
 		if (started_) {
@@ -696,7 +696,7 @@ template <std::size_t StackSize> class StaticThread
 	}
 
 	template <typename Rep, typename Period>
-	Result<> join(std::chrono::duration<Rep, Period> wait) noexcept
+	[[nodiscard]] Result<> join(std::chrono::duration<Rep, Period> wait) noexcept
 	{
 		if (!started_) {
 			return {};

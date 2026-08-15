@@ -13,8 +13,17 @@
 
 using namespace zest;
 
+struct CallableObject {
+	int state{};
+	int operator()(int value) noexcept
+	{
+		return value + state;
+	}
+};
+
 /* A reference is two pointers and never allocates. */
 static_assert(sizeof(FunctionRef<int(int) noexcept>) == 2 * sizeof(void *));
+static_assert(!std::is_constructible_v<FunctionRef<int(int) noexcept>, CallableObject>);
 
 namespace
 {
@@ -35,14 +44,16 @@ int main()
 {
 	/* A capturing lambda works, which a bare function pointer cannot do. */
 	int offset = 10;
-	CHECK_EQ(apply([&](int value) noexcept { return value + offset; }, 5), 15);
+	auto add_offset = [&](int value) noexcept { return value + offset; };
+	CHECK_EQ(apply(add_offset, 5), 15);
 
 	offset = 100;
-	CHECK_EQ(apply([&](int value) noexcept { return value + offset; }, 5), 105);
+	CHECK_EQ(apply(add_offset, 5), 105);
 
 	/* A plain function and a stateless lambda work too. */
 	CHECK_EQ(apply(plain_function, 5), 6);
-	CHECK_EQ(apply([](int value) noexcept { return value * 2; }, 5), 10);
+	auto times_two = [](int value) noexcept { return value * 2; };
+	CHECK_EQ(apply(times_two, 5), 10);
 
 	/* A mutable callable can accumulate through the reference. */
 	{

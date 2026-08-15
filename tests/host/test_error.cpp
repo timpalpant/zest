@@ -49,6 +49,27 @@ static_assert(zest::check_positive(-EIO, zest::errors::no_data).error() == zest:
 namespace
 {
 
+enum class DomainError {
+	failed
+};
+
+constexpr Result<int, DomainError> domain_result(bool fail) noexcept
+{
+	if (fail) {
+		return zest::fail(DomainError::failed);
+	}
+	return 7;
+}
+
+constexpr Result<void, DomainError> propagate_domain(bool fail) noexcept
+{
+	ZEST_TRY(domain_result(fail));
+	return {};
+}
+
+static_assert(propagate_domain(false).has_value());
+static_assert(propagate_domain(true).error() == DomainError::failed);
+
 Result<int> propagating(bool fail) noexcept
 {
 	if (fail) {
@@ -63,12 +84,6 @@ Result<> try_macro(bool fail) noexcept
 	return {};
 }
 
-Result<int> try_assign_macro(bool fail) noexcept
-{
-	ZEST_TRY_ASSIGN(value, propagating(fail));
-	return value * 2;
-}
-
 } /* namespace */
 
 int main()
@@ -78,7 +93,8 @@ int main()
 	CHECK_EQ(Error{-EINVAL}.message(), "invalid argument");
 	CHECK_EQ(Error{-ETIMEDOUT}.message(), "timed out");
 	CHECK_EQ(Error{-ENODEV}.message(), "no such device");
-	CHECK_EQ(Error{0}.message(), "success");
+	CHECK_EQ(Error{0}, zest::errors::invalid_argument);
+	CHECK_EQ(Error{INT_MIN}, zest::errors::out_of_range);
 
 	/* An errno the table does not know still yields something printable. */
 	CHECK(!Error{-31337}.message().empty());
@@ -86,8 +102,6 @@ int main()
 	/* The macros propagate and bind as documented. */
 	CHECK_OK(try_macro(false));
 	CHECK_ERR(try_macro(true), zest::errors::timed_out);
-	CHECK_EQ(try_assign_macro(false).value(), 22);
-	CHECK_ERR(try_assign_macro(true), zest::errors::timed_out);
 
 	/* Distinct errno values stay distinct. */
 	CHECK(zest::errors::invalid_argument != zest::errors::no_device);

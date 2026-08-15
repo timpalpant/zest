@@ -22,8 +22,9 @@ namespace zest
  * plus a context argument --- accepts a lambda that captures, so no static
  * trampoline or hand-cast context pointer is needed.
  *
- * The referenced callable must outlive the `FunctionRef`. Use `InplaceFunction`
- * when the callback has to be stored.
+ * The referenced callable must outlive the `FunctionRef`. Callable objects must
+ * therefore be passed as lvalues; temporary lambdas are rejected. Use
+ * `InplaceFunction` when the callback has to be stored.
  */
 template <typename Signature> class FunctionRef;
 
@@ -58,7 +59,7 @@ template <typename R, typename... Args> class FunctionRef<R(Args...)>
 	/** Refer to a callable object. It must outlive this reference. */
 	template <typename F>
 		requires(!std::is_same_v<std::decay_t<F>, FunctionRef> && detail::NotFunction<F> &&
-			 std::is_invocable_r_v<R, F &, Args...>)
+			 std::is_lvalue_reference_v<F &&> && std::is_invocable_r_v<R, F &, Args...>)
 	constexpr FunctionRef(F &&callable) noexcept
 		: target_{.object = const_cast<void *>(
 				  static_cast<const void *>(std::addressof(callable)))},
@@ -97,6 +98,7 @@ template <typename R, typename... Args> class FunctionRef<R(Args...) noexcept>
 	/** Refer to a callable object. It must outlive this reference. */
 	template <typename F>
 		requires(!std::is_same_v<std::decay_t<F>, FunctionRef> && detail::NotFunction<F> &&
+			 std::is_lvalue_reference_v<F &&> &&
 			 std::is_nothrow_invocable_r_v<R, F &, Args...>)
 	constexpr FunctionRef(F &&callable) noexcept
 		: target_{.object = const_cast<void *>(

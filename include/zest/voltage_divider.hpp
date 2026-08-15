@@ -37,7 +37,7 @@ class VoltageDivider
 	{
 	}
 
-	Result<> init() const noexcept
+	[[nodiscard]] Result<> init() const noexcept
 	{
 		if (measured_.count() <= 0 || full_.count() < measured_.count()) {
 			return fail(errors::invalid_argument);
@@ -46,9 +46,13 @@ class VoltageDivider
 	}
 
 	/** Sample once and reconstruct the divider's input voltage, in microvolts. */
-	Result<Microvolts> read_microvolts() const noexcept
+	[[nodiscard]] Result<Microvolts> read_microvolts() const noexcept
 	{
-		ZEST_TRY_ASSIGN(output, channel_.read_microvolts());
+		auto output_result = channel_.read_microvolts();
+		if (!output_result) {
+			return fail(output_result.error());
+		}
+		auto output = *output_result;
 		return divider_input(output, measured_, full_);
 	}
 
@@ -56,15 +60,19 @@ class VoltageDivider
 	 * Average @p samples conversions, then reconstruct the input voltage, in
 	 * microvolts.
 	 */
-	Result<Microvolts> read_average_microvolts(std::size_t samples) const noexcept
+	[[nodiscard]] Result<Microvolts> read_average_microvolts(std::size_t samples) const noexcept
 	{
-		ZEST_TRY_ASSIGN(output, channel_.read_average_microvolts(samples));
+		auto output_result = channel_.read_average_microvolts(samples);
+		if (!output_result) {
+			return fail(output_result.error());
+		}
+		auto output = *output_result;
 		return divider_input(output, measured_, full_);
 	}
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
-	Result<Microvolts> read_average_microvolts() const noexcept
+	[[nodiscard]] Result<Microvolts> read_average_microvolts() const noexcept
 	{
 		static_assert(Samples > 0U, "at least one ADC sample is required");
 		return read_average_microvolts(Samples);

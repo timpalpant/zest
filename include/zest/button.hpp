@@ -75,10 +75,14 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	Button &operator=(const Button &) = delete;
 
 	/** Configure and sample the input to establish its initial stable state. */
-	Result<> init(time_point now = clock::now()) noexcept
+	[[nodiscard]] Result<> init(time_point now = clock::now()) noexcept
 	{
 		ZEST_TRY(input_.init());
-		ZEST_TRY_ASSIGN(state, input_.get());
+		auto state_result = input_.get();
+		if (!state_result) {
+			return fail(state_result.error());
+		}
+		auto state = *state_result;
 
 		const bool active = state == GpioState::active;
 		debouncer_.reset(active);
@@ -89,7 +93,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	}
 
 	/** Enable both-edge wakeups. Events are still decoded by poll(). */
-	Result<> enable_interrupts() noexcept
+	[[nodiscard]] Result<> enable_interrupts() noexcept
 	{
 		if (!initialized_) {
 			return fail(errors::not_connected);
@@ -122,12 +126,16 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	}
 
 	/** Poll the GPIO and report any debounced events. */
-	Result<ButtonUpdate> poll(time_point now = clock::now()) noexcept
+	[[nodiscard]] Result<ButtonUpdate> poll(time_point now = clock::now()) noexcept
 	{
 		if (!initialized_) {
 			return fail(errors::not_connected);
 		}
-		ZEST_TRY_ASSIGN(state, input_.get());
+		auto state_result = input_.get();
+		if (!state_result) {
+			return fail(state_result.error());
+		}
+		auto state = *state_result;
 
 		const auto debounced = debouncer_.update(state == GpioState::active, now);
 		ButtonEvent events = ButtonEvent::none;
@@ -162,7 +170,7 @@ template <typename Clock = std::chrono::steady_clock> class Button
 	 * enabled the wait sleeps on the edge semaphore and only polls to re-check
 	 * timing; otherwise it polls at @p poll_interval.
 	 */
-	Result<ButtonUpdate>
+	[[nodiscard]] Result<ButtonUpdate>
 	wait(std::chrono::milliseconds timeout = std::chrono::milliseconds::max(),
 	     std::chrono::milliseconds poll_interval = std::chrono::milliseconds{5}) noexcept
 	{
@@ -173,7 +181,11 @@ template <typename Clock = std::chrono::steady_clock> class Button
 		const bool forever = timeout == std::chrono::milliseconds::max();
 
 		for (;;) {
-			ZEST_TRY_ASSIGN(update, poll(clock::now()));
+			auto update_result = poll(clock::now());
+			if (!update_result) {
+				return fail(update_result.error());
+			}
+			auto update = *update_result;
 			if (update.events != ButtonEvent::none) {
 				return update;
 			}
