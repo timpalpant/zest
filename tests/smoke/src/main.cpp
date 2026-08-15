@@ -608,6 +608,7 @@ ZTEST(zest_smoke, test_mqtt_surface)
 ZTEST(zest_smoke, test_http_url_parsing_and_errors)
 {
 	static_assert(std::is_nothrow_default_constructible_v<zest::HttpClient>);
+	static_assert(std::is_nothrow_constructible_v<zest::HttpClient, zest::HttpClient::Options>);
 	zest::HttpClient client;
 	std::array<std::byte, 64> body{};
 

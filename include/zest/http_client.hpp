@@ -138,7 +138,8 @@ class HttpClient
 	struct Options {
 		/** Retained configuration owns its variable-length strings and collections. */
 		std::chrono::milliseconds timeout{15'000};
-		std::string user_agent{"zest-http/1.0"};
+		/** Empty selects Zest's default User-Agent. */
+		std::string user_agent{};
 		std::vector<OwnedHttpHeader> default_headers{};
 		/**
 		 * Keep the connection open for a following request to the same host.
@@ -160,7 +161,9 @@ class HttpClient
 	 * request() itself uses caller storage and fixed internal buffers.
 	 */
 
-	HttpClient();
+	/** Construct with Zest's default User-Agent and no allocated storage. */
+	HttpClient() noexcept;
+	/** Move preconfigured options into the client without further allocation. */
 	explicit HttpClient(Options options) noexcept;
 	~HttpClient() noexcept;
 
@@ -195,15 +198,6 @@ class HttpClient
 	[[nodiscard]] Result<HttpResponse, HttpError>
 	delete_request(std::string_view url, std::span<std::byte> response_buffer,
 		       std::span<const HttpHeader> headers = {}) noexcept;
-
-	void set_timeout(std::chrono::milliseconds timeout) noexcept;
-	void set_user_agent(std::string user_agent);
-	void set_keep_alive(bool enabled) noexcept;
-
-#if defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
-	void set_peer_verification(PeerVerification verification,
-				   std::span<const sec_tag_t> security_tags = {});
-#endif
 
 	/** Close any connection kept open by `keep_alive`. */
 	void close() noexcept;

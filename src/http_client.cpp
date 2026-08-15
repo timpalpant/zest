@@ -21,6 +21,8 @@ namespace zest
 namespace
 {
 
+constexpr std::string_view default_user_agent{"zest-http/1.0"};
+
 #if defined(CONFIG_ZEST_HTTP_RECV_BUF_SIZE)
 constexpr std::size_t http_receive_chunk = CONFIG_ZEST_HTTP_RECV_BUF_SIZE;
 #else
@@ -411,9 +413,9 @@ int response_callback(struct http_response *response, enum http_final_call,
 
 } /* namespace */
 
-HttpClient::HttpClient() = default;
+HttpClient::HttpClient() noexcept = default;
 
-HttpClient::HttpClient(Options options) noexcept : options_{options}
+HttpClient::HttpClient(Options options) noexcept : options_{std::move(options)}
 {
 }
 
@@ -462,7 +464,8 @@ Result<HttpResponse, HttpError> HttpClient::request(const HttpRequest &request,
 	RequestContext context{
 		.default_headers = options_.default_headers,
 		.headers = request.headers,
-		.user_agent = options_.user_agent,
+		.user_agent =
+			options_.user_agent.empty() ? default_user_agent : options_.user_agent,
 		.output = response_buffer,
 		.keep_alive = options_.keep_alive,
 	};
@@ -586,33 +589,6 @@ HttpClient::delete_request(std::string_view url, std::span<std::byte> response_b
 	return request(HttpRequest{.method = HttpMethod::delete_, .url = url, .headers = headers},
 		       response_buffer);
 }
-
-void HttpClient::set_timeout(std::chrono::milliseconds timeout) noexcept
-{
-	options_.timeout = timeout;
-}
-
-void HttpClient::set_user_agent(std::string user_agent)
-{
-	options_.user_agent = std::move(user_agent);
-}
-
-void HttpClient::set_keep_alive(bool enabled) noexcept
-{
-	options_.keep_alive = enabled;
-	if (!enabled) {
-		close();
-	}
-}
-
-#if defined(CONFIG_ZEST_HTTP_CLIENT_TLS)
-void HttpClient::set_peer_verification(PeerVerification verification,
-				       std::span<const sec_tag_t> security_tags)
-{
-	options_.peer_verification = verification;
-	options_.security_tags.assign(security_tags.begin(), security_tags.end());
-}
-#endif
 
 const char *to_string(HttpErrorStage stage) noexcept
 {

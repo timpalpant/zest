@@ -87,8 +87,7 @@ Result<> Servo::set_position(PerMille position) const noexcept
 		return fail(errors::invalid_argument);
 	}
 	const auto span = (maximum_pulse_ - minimum_pulse_).count();
-	const auto offset =
-		static_cast<std::int64_t>(span) * position.count() / kFullScale.count();
+	const auto offset = static_cast<std::int64_t>(span) * position.count() / kFullScale.count();
 	return output_.set_pulse(minimum_pulse_ + std::chrono::nanoseconds{offset});
 }
 
@@ -102,8 +101,8 @@ Result<> Buzzer::tone(Hertz frequency, PerMille volume) const noexcept
 	const auto period = std::chrono::nanoseconds{kNanosecondsPerSecond /
 						     static_cast<std::int64_t>(frequency.count())};
 	/* A square wave at half duty, scaled by volume. */
-	const auto pulse = std::chrono::nanoseconds{
-		period.count() * volume.count() / (2 * kFullScale.count())};
+	const auto pulse = std::chrono::nanoseconds{period.count() * volume.count() /
+						    (2 * kFullScale.count())};
 	return output_.set(period, pulse);
 }
 

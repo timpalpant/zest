@@ -247,15 +247,15 @@ using PerMille = Quantity<std::int16_t, tags::Fraction, std::milli>;
  * implicit / `quantity_cast` rules rather than the divider rounding to a single
  * unit for everyone.
  */
-template <typename Output> requires std::is_same_v<typename Output::tag, tags::Voltage>
-[[nodiscard]] constexpr Output divider_input(Output output, Ohms measured,
-					     Ohms full) noexcept
+template <typename Output>
+	requires std::is_same_v<typename Output::tag, tags::Voltage>
+[[nodiscard]] constexpr Output divider_input(Output output, Ohms measured, Ohms full) noexcept
 {
 	if (measured.count() <= 0) {
 		return Output{0};
 	}
-	return Output{static_cast<typename Output::rep>(
-		static_cast<std::int64_t>(output.count()) * full.count() / measured.count())};
+	return Output{static_cast<typename Output::rep>(static_cast<std::int64_t>(output.count()) *
+							full.count() / measured.count())};
 }
 
 /** User-defined literals for the common sensing scales. */
