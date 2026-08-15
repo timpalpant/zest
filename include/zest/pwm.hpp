@@ -18,26 +18,24 @@ namespace zest
 {
 
 /**
- * Duty cycle in per-mille (0..1000).
+ * Duty cycle in per-mille (0..1000), as a `PerMille` quantity.
  *
  * Integer rather than floating point, which would cost a soft-float call in an
  * LED or motor update loop. Per-mille is finer than any PWM peripheral resolves
  * in practice.
  */
-using PerMille = std::uint16_t;
-
-inline constexpr PerMille kFullScale = 1000U;
+inline constexpr PerMille kFullScale = PerMille{1000};
 
 /** Convert a 0..1 fraction to per-mille, clamping out-of-range input. */
 [[nodiscard]] constexpr PerMille per_mille_from(float fraction) noexcept
 {
 	if (fraction <= 0.0F) {
-		return 0U;
+		return PerMille{0};
 	}
 	if (fraction >= 1.0F) {
 		return kFullScale;
 	}
-	return static_cast<PerMille>(fraction * 1000.0F + 0.5F);
+	return PerMille{static_cast<std::int16_t>(fraction * 1000.0F + 0.5F)};
 }
 
 /** A devicetree-configured PWM output. */

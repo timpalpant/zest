@@ -436,11 +436,11 @@ ZTEST(zest_smoke, test_gpio_output_tracks_state_without_reading_the_pin)
 ZTEST(zest_smoke, test_pwm_duty_is_integer)
 {
 	static_assert(std::is_nothrow_constructible_v<zest::PwmOutput, pwm_dt_spec>);
-	zassert_equal(zest::per_mille_from(0.5F), 500U);
-	zassert_equal(zest::per_mille_from(0.0F), 0U);
-	zassert_equal(zest::per_mille_from(1.0F), 1000U);
-	zassert_equal(zest::per_mille_from(2.0F), 1000U);
-	zassert_equal(zest::per_mille_from(-1.0F), 0U);
+	zassert_equal(zest::per_mille_from(0.5F).count(), 500);
+	zassert_equal(zest::per_mille_from(0.0F).count(), 0);
+	zassert_equal(zest::per_mille_from(1.0F).count(), 1000);
+	zassert_equal(zest::per_mille_from(2.0F).count(), 1000);
+	zassert_equal(zest::per_mille_from(-1.0F).count(), 0);
 }
 #endif
 

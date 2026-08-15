@@ -58,6 +58,12 @@ static_assert(quantity_cast<Ohms>(100_kohm).count() == 100'000);
 /* A float representation converts freely, since nothing is lost. */
 static_assert(std::is_convertible_v<Volts, VoltsF>);
 
+/* Per-mille is a fraction quantity, not a raw integer. */
+static_assert(!std::is_convertible_v<std::int16_t, PerMille>);
+static_assert(PerMille{500} > PerMille{0});
+static_assert(PerMille{500} < PerMille{1000});
+static_assert(500_permille == PerMille{500});
+
 /* The divider helper reconstructs the input voltage in integer arithmetic. */
 static_assert(divider_input(Millivolts{1000}, Ohms{100}, Ohms{300}).count() == 3000);
 static_assert(divider_input(Millivolts{1650}, Ohms{100}, Ohms{200}).count() == 3300);

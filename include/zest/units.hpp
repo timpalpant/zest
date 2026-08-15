@@ -183,6 +183,8 @@ struct Pressure {
 };
 struct Frequency {
 };
+struct Fraction {
+};
 } /* namespace tags */
 
 /* Voltage. The base scale is the volt; readings are usually millivolts. */
@@ -230,6 +232,9 @@ using Kilopascals = Quantity<std::int32_t, tags::Pressure, std::kilo>;
 /* Frequency. */
 using Hertz = Quantity<std::uint32_t, tags::Frequency>;
 using Kilohertz = Quantity<std::uint32_t, tags::Frequency, std::kilo>;
+
+/* Fraction, in per-mille: duty cycles, positions, and levels, full scale 1000. */
+using PerMille = Quantity<std::int16_t, tags::Fraction, std::milli>;
 
 /**
  * Reconstruct the input voltage of a resistive divider.
@@ -300,6 +305,10 @@ namespace literals
 [[nodiscard]] constexpr Kilohertz operator""_kHz(unsigned long long value) noexcept
 {
 	return Kilohertz{static_cast<std::uint32_t>(value)};
+}
+[[nodiscard]] constexpr PerMille operator""_permille(unsigned long long value) noexcept
+{
+	return PerMille{static_cast<std::int16_t>(value)};
 }
 
 } /* namespace literals */

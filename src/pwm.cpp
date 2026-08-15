@@ -34,7 +34,8 @@ Result<> PwmOutput::set_duty(PerMille duty) const noexcept
 		return fail(errors::invalid_argument);
 	}
 	/* Integer scaling: no FPU involved. */
-	const auto pulse = static_cast<std::int64_t>(spec_.period) * duty / kFullScale;
+	const auto pulse =
+		static_cast<std::int64_t>(spec_.period) * duty.count() / kFullScale.count();
 	return set_pulse(std::chrono::nanoseconds{pulse});
 }
 
@@ -66,8 +67,8 @@ Result<> RgbLed::set(RgbColor color) const noexcept
 {
 	/* 8-bit intensity scaled to per-mille without floating point. */
 	constexpr auto to_per_mille = [](std::uint8_t level) constexpr -> PerMille {
-		return static_cast<PerMille>(
-			(static_cast<std::uint32_t>(level) * kFullScale + 127U) / 255U);
+		return PerMille{static_cast<std::int16_t>(
+			(static_cast<std::uint32_t>(level) * kFullScale.count() + 127U) / 255U)};
 	};
 	ZEST_TRY(red_.set_duty(to_per_mille(color.red)));
 	ZEST_TRY(green_.set_duty(to_per_mille(color.green)));
@@ -86,7 +87,8 @@ Result<> Servo::set_position(PerMille position) const noexcept
 		return fail(errors::invalid_argument);
 	}
 	const auto span = (maximum_pulse_ - minimum_pulse_).count();
-	const auto offset = static_cast<std::int64_t>(span) * position / kFullScale;
+	const auto offset =
+		static_cast<std::int64_t>(span) * position.count() / kFullScale.count();
 	return output_.set_pulse(minimum_pulse_ + std::chrono::nanoseconds{offset});
 }
 
@@ -100,7 +102,8 @@ Result<> Buzzer::tone(Hertz frequency, PerMille volume) const noexcept
 	const auto period = std::chrono::nanoseconds{kNanosecondsPerSecond /
 						     static_cast<std::int64_t>(frequency.count())};
 	/* A square wave at half duty, scaled by volume. */
-	const auto pulse = std::chrono::nanoseconds{period.count() * volume / (2 * kFullScale)};
+	const auto pulse = std::chrono::nanoseconds{
+		period.count() * volume.count() / (2 * kFullScale.count())};
 	return output_.set(period, pulse);
 }
 
