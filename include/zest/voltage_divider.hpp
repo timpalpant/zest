@@ -45,24 +45,29 @@ class VoltageDivider
 		return channel_.init();
 	}
 
-	/** Sample once and reconstruct the divider's input voltage. */
-	Result<Millivolts> read_millivolts() const noexcept
+	/** Sample once and reconstruct the divider's input voltage, in microvolts. */
+	Result<Microvolts> read_microvolts() const noexcept
 	{
-		ZEST_TRY_ASSIGN(output, channel_.read_millivolts());
+		ZEST_TRY_ASSIGN(output, channel_.read_microvolts());
 		return divider_input(output, measured_, full_);
 	}
 
-	/** Average @p samples conversions, then reconstruct. */
-	Result<Millivolts> read_average_millivolts(std::size_t samples) const noexcept
+	/**
+	 * Average @p samples conversions, then reconstruct the input voltage, in
+	 * microvolts.
+	 */
+	Result<Microvolts> read_average_microvolts(std::size_t samples) const noexcept
 	{
-		ZEST_TRY_ASSIGN(output, channel_.read_average_millivolts(samples));
+		ZEST_TRY_ASSIGN(output, channel_.read_average_microvolts(samples));
 		return divider_input(output, measured_, full_);
 	}
 
-	template <std::size_t Samples = 1U>
-	Result<Millivolts> read_millivolts() const noexcept
+	/** Compile-time sample count, for call sites that had one. */
+	template <std::size_t Samples>
+	Result<Microvolts> read_average_microvolts() const noexcept
 	{
-		return read_average_millivolts(Samples);
+		static_assert(Samples > 0U, "at least one ADC sample is required");
+		return read_average_microvolts(Samples);
 	}
 
 	[[nodiscard]] constexpr const AdcChannel &channel() const noexcept

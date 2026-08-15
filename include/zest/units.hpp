@@ -236,16 +236,21 @@ using Kilohertz = Quantity<std::uint32_t, tags::Frequency, std::kilo>;
  *
  * `full` is the total series resistance and `measured` the part the ADC sees, as
  * the devicetree `voltage-divider` binding reports them. Evaluated in 64-bit
- * integer arithmetic, so no FPU is involved.
+ * integer arithmetic, so no FPU is involved. The result carries the same scale as
+ * the measurement, so a microvolt read reconstructs to microvolts and a millivolt
+ * read to millivolts --- the caller then converts between the two with the usual
+ * implicit / `quantity_cast` rules rather than the divider rounding to a single
+ * unit for everyone.
  */
-[[nodiscard]] constexpr Millivolts divider_input(Millivolts output, Ohms measured,
-						 Ohms full) noexcept
+template <typename Output> requires std::is_same_v<typename Output::tag, tags::Voltage>
+[[nodiscard]] constexpr Output divider_input(Output output, Ohms measured,
+					     Ohms full) noexcept
 {
 	if (measured.count() <= 0) {
-		return Millivolts{0};
+		return Output{0};
 	}
-	return Millivolts{static_cast<std::int32_t>(static_cast<std::int64_t>(output.count()) *
-						    full.count() / measured.count())};
+	return Output{static_cast<typename Output::rep>(
+		static_cast<std::int64_t>(output.count()) * full.count() / measured.count())};
 }
 
 /** User-defined literals for the common sensing scales. */

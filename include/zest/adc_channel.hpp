@@ -38,42 +38,32 @@ class AdcChannel
 	/** Perform one conversion and return its raw sample value. */
 	Result<std::int32_t> read_raw() const noexcept;
 
-	/** Perform one conversion and return the input voltage. */
-	Result<Millivolts> read_millivolts() const noexcept;
-
 	/**
 	 * Perform one conversion and return the input voltage in microvolts.
 	 *
-	 * Millivolts are the wrong unit for a high-resolution part: a 16-bit
-	 * converter across a 2 V span resolves about 31 uV, so rounding to
-	 * millivolts discards five bits of exactly the resolution such a part was
-	 * chosen for. Prefer this whenever the signal of interest is smaller than a
-	 * few hundred millivolts --- a bridge, a thermocouple, or the output of an
-	 * instrumentation amplifier.
+	 * Microvolts are the finest scale the converter resolves and the one this
+	 * class reports. A view of the reading in millivolts or volts is a
+	 * `quantity_cast` to a coarser scale (it may truncate) --- which the units
+	 * type already provides --- so there is no separate millivolt method.
+	 *
+	 * ```cpp
+	 * if (auto micro = channel.read_microvolts()) {
+	 *     const Millivolts coarse = quantity_cast<Millivolts>(*micro);
+	 * }
+	 * ```
 	 */
 	Result<Microvolts> read_microvolts() const noexcept;
 
 	/**
-	 * Average @p samples conversions taken in a single hardware sequence.
+	 * Average @p samples conversions taken in a single hardware sequence, in
+	 * microvolts.
 	 *
 	 * Uses `adc_sequence_options::extra_samplings`, so the driver is entered
 	 * once rather than once per sample. Drivers that reject multi-sampling fall
 	 * back to repeated single conversions automatically.
 	 */
-	Result<Millivolts>
-	read_average_millivolts(std::size_t samples) const noexcept;
-
-	/** Average @p samples conversions, in microvolts. @see read_microvolts() */
 	Result<Microvolts>
 	read_average_microvolts(std::size_t samples) const noexcept;
-
-	/** Compile-time sample count, for call sites that had one. */
-	template <std::size_t Samples>
-	Result<Millivolts> read_average_millivolts() const noexcept
-	{
-		static_assert(Samples > 0U, "at least one ADC sample is required");
-		return read_average_millivolts(Samples);
-	}
 
 	/** Compile-time sample count, for call sites that had one. */
 	template <std::size_t Samples>
@@ -101,9 +91,6 @@ class AdcChannel
 	}
 
       private:
-	/** Convert a raw reading to millivolts using the channel's reference. */
-	Result<Millivolts> to_millivolts(std::int32_t raw) const noexcept;
-
 	/** Convert a raw reading to microvolts using the channel's reference. */
 	Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
 

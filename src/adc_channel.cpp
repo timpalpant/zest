@@ -32,13 +32,6 @@ Result<> AdcChannel::init() const noexcept
 	return check(adc_channel_setup_dt(&spec_));
 }
 
-Result<Millivolts> AdcChannel::to_millivolts(std::int32_t raw) const noexcept
-{
-	std::int32_t value = raw;
-	ZEST_TRY(check(adc_raw_to_millivolts_dt(&spec_, &value)));
-	return Millivolts{value};
-}
-
 Result<Microvolts> AdcChannel::to_microvolts(std::int32_t raw) const noexcept
 {
 	std::int32_t value = raw;
@@ -137,22 +130,10 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 	return static_cast<std::int32_t>(total / static_cast<std::int64_t>(samples));
 }
 
-Result<Millivolts> AdcChannel::read_millivolts() const noexcept
-{
-	ZEST_TRY_ASSIGN(raw, read_raw());
-	return to_millivolts(raw);
-}
-
 Result<Microvolts> AdcChannel::read_microvolts() const noexcept
 {
 	ZEST_TRY_ASSIGN(raw, read_raw());
 	return to_microvolts(raw);
-}
-
-Result<Millivolts> AdcChannel::read_average_millivolts(std::size_t samples) const noexcept
-{
-	ZEST_TRY_ASSIGN(raw, read_average_raw(samples));
-	return to_millivolts(raw);
 }
 
 Result<Microvolts> AdcChannel::read_average_microvolts(std::size_t samples) const noexcept

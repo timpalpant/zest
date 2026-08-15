@@ -386,9 +386,6 @@ ZTEST(zest_smoke, test_function_ref_accepts_captures)
 ZTEST(zest_smoke, test_adc_surface_compiles)
 {
 	static_assert(std::is_nothrow_constructible_v<zest::AdcChannel, adc_dt_spec>);
-	static_assert(noexcept(std::declval<const zest::AdcChannel &>().read_millivolts()));
-	static_assert(
-		noexcept(std::declval<const zest::AdcChannel &>().read_average_millivolts(16)));
 	static_assert(noexcept(std::declval<const zest::AdcChannel &>().read_microvolts()));
 	static_assert(
 		noexcept(std::declval<const zest::AdcChannel &>().read_average_microvolts(16)));
@@ -405,12 +402,12 @@ ZTEST(zest_smoke, test_adc_surface_compiles)
 				     zest::Result<zest::Microvolts>>);
 
 	constexpr auto curve = zest::battery_curve(std::array{
-		zest::CurvePoint{4200, 100},
-		zest::CurvePoint{3700, 10},
-		zest::CurvePoint{3300, 0},
+		zest::CurvePoint{zest::Millivolts{4200}, 100},
+		zest::CurvePoint{zest::Millivolts{3700}, 10},
+		zest::CurvePoint{zest::Millivolts{3300}, 0},
 	});
-	zassert_equal(curve.percent_at(3950), 55);
-	zassert_equal(curve.percent_at(5000), 100);
+	zassert_equal(curve.percent_at(zest::Millivolts{3950}), 55);
+	zassert_equal(curve.percent_at(zest::Millivolts{5000}), 100);
 }
 #endif
 

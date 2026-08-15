@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <zest/units.hpp>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -17,11 +19,13 @@
  * @brief Battery voltage measurement and state-of-charge estimation.
  *
  * ```text
- * AdcChannel -> VoltageDivider -> BatteryMonitor -> BatteryCurve::percent_at()
+ * AdcChannel -> VoltageDivider -> BatteryMonitor::percent(BatteryCurve)
  * ```
  *
  * Measurement and charge estimation are separate types: reading the cell is I/O
  * that fails per call, while a curve is validated once and then cannot fail.
+ * `BatteryMonitor` composes the two --- it owns the divider and reads the cell;
+ * the curve is a constant of the design, passed to `percent()`.
  *
  * The curve half needs no Kconfig option and no Zephyr facility. `BatteryMonitor`
  * is declared only under `CONFIG_ZEST_BATTERY_MONITOR=y`.
@@ -34,7 +38,7 @@ namespace zest
 
 /** One point on a battery discharge curve. */
 struct CurvePoint {
-	std::int32_t millivolts;
+	Millivolts voltage;
 	std::uint8_t percent;
 };
 
@@ -79,7 +83,7 @@ validate_curve(std::span<const CurvePoint> curve) noexcept
 		const CurvePoint &previous = curve[i - 1];
 		const CurvePoint &current = curve[i];
 
-		if (previous.millivolts <= current.millivolts) {
+		if (previous.voltage <= current.voltage) {
 			return std::unexpected(CurveError::invalid_voltage_order);
 		}
 		if (previous.percent < current.percent || current.percent > 100U) {
@@ -95,20 +99,21 @@ validate_curve(std::span<const CurvePoint> curve) noexcept
  * Values outside the curve clamp to its endpoint percentages.
  */
 [[nodiscard]] constexpr std::uint8_t
-interpolate_validated_curve(std::int32_t millivolts, std::span<const CurvePoint> curve) noexcept
+interpolate_validated_curve(Millivolts voltage, std::span<const CurvePoint> curve) noexcept
 {
-	if (millivolts >= curve.front().millivolts) {
+	if (voltage >= curve.front().voltage) {
 		return curve.front().percent;
 	}
 
+	const std::int32_t level = voltage.count();
 	for (std::size_t i = 1; i < curve.size(); ++i) {
 		const CurvePoint &high = curve[i - 1];
 		const CurvePoint &low = curve[i];
 
-		if (millivolts >= low.millivolts) {
+		if (level >= low.voltage.count()) {
 			const std::int64_t percentage_span = high.percent - low.percent;
-			const std::int64_t voltage_span = high.millivolts - low.millivolts;
-			const std::int64_t offset = millivolts - low.millivolts;
+			const std::int64_t voltage_span = high.voltage.count() - low.voltage.count();
+			const std::int64_t offset = level - low.voltage.count();
 
 			return static_cast<std::uint8_t>(low.percent +
 							 offset * percentage_span / voltage_span);
@@ -133,9 +138,9 @@ template <std::size_t Points> class BatteryCurve
 	static_assert(Points >= 2U, "a discharge curve needs at least two points");
 
 	/** Estimate charge, clamped to the curve's endpoints. Cannot fail. */
-	[[nodiscard]] constexpr std::uint8_t percent_at(std::int32_t millivolts) const noexcept
+	[[nodiscard]] constexpr std::uint8_t percent_at(Millivolts voltage) const noexcept
 	{
-		return interpolate_validated_curve(millivolts, points_);
+		return interpolate_validated_curve(voltage, points_);
 	}
 
 	[[nodiscard]] constexpr std::span<const CurvePoint> points() const noexcept
@@ -144,15 +149,15 @@ template <std::size_t Points> class BatteryCurve
 	}
 
 	/** The voltage at which the curve reports a full battery. */
-	[[nodiscard]] constexpr std::int32_t full_millivolts() const noexcept
+	[[nodiscard]] constexpr Millivolts full() const noexcept
 	{
-		return points_.front().millivolts;
+		return points_.front().voltage;
 	}
 
 	/** The voltage at which the curve reports an empty battery. */
-	[[nodiscard]] constexpr std::int32_t empty_millivolts() const noexcept
+	[[nodiscard]] constexpr Millivolts empty() const noexcept
 	{
-		return points_.back().millivolts;
+		return points_.back().voltage;
 	}
 
       private:
@@ -219,12 +224,12 @@ template <std::size_t N>
  * validates once and cannot fail.
  */
 [[nodiscard]] constexpr std::expected<std::uint8_t, CurveError>
-estimate_charge_percent(std::int32_t millivolts, std::span<const CurvePoint> curve) noexcept
+estimate_charge_percent(Millivolts voltage, std::span<const CurvePoint> curve) noexcept
 {
 	if (const auto valid = validate_curve(curve); !valid) {
 		return std::unexpected(valid.error());
 	}
-	return interpolate_validated_curve(millivolts, curve);
+	return interpolate_validated_curve(voltage, curve);
 }
 
 } /* namespace zest */
@@ -239,18 +244,23 @@ estimate_charge_percent(std::int32_t millivolts, std::span<const CurvePoint> cur
 #if defined(CONFIG_ZEST_BATTERY_MONITOR)
 
 #include <zest/error.hpp>
-#include <zest/units.hpp>
 #include <zest/voltage_divider.hpp>
 
 namespace zest
 {
 
 /**
- * Reads battery voltage through a resistive divider.
+ * A configured battery: a cell voltage read through a resistive divider, and a
+ * charge estimate once paired with a validated `BatteryCurve`.
  *
- * The divider ratio is given as the two resistances from the devicetree
- * `voltage-divider` node. Pair a reading with a `BatteryCurve` above to turn it
- * into a charge estimate.
+ * It owns the measurement policy (how many conversions to average, so one read
+ * is not a single noisy conversion) and is the one object that produces a charge
+ * percentage. The divider ratio comes from the devicetree `voltage-divider` node;
+ * a `BatteryCurve` maps the reconstructed cell voltage to a percentage and is
+ * passed to `percent()`, keeping the validated shape in the caller's hands.
+ *
+ * Reads report the input voltage in microvolts, the finest scale; the charge
+ * estimate converts down to the curve's millivolt scale itself.
  *
  * Requires `CONFIG_ZEST_BATTERY_MONITOR=y`.
  */
@@ -274,25 +284,54 @@ class BatteryMonitor
 	{
 	}
 
-	/** Configure the ADC channel. Call once before read_millivolts(). */
+	/** Configure the divider and its channel. Call once before reading. */
 	Result<> init() const noexcept
 	{
 		return divider_.init();
 	}
 
-	/** Sample the battery, averaging the configured number of conversions. */
-	Result<Millivolts> read_millivolts() const noexcept
+	/** One conversion, reconstructing the cell voltage in microvolts. */
+	Result<Microvolts> read_microvolts() const noexcept
 	{
-		return divider_.read_average_millivolts(oversample_);
+		return divider_.read_microvolts();
 	}
 
-	[[nodiscard]] constexpr const VoltageDivider &divider() const noexcept
+	/**
+	 * Average the configured number of conversions into the cell voltage, in
+	 * microvolts.
+	 */
+	Result<Microvolts> read_average_microvolts() const noexcept
 	{
-		return divider_;
+		return divider_.read_average_microvolts(oversample_);
 	}
-	[[nodiscard]] constexpr std::size_t oversample() const noexcept
+
+	/** Average @p samples conversions into the cell voltage, in microvolts. */
+	Result<Microvolts> read_average_microvolts(std::size_t samples) const noexcept
 	{
-		return oversample_;
+		return divider_.read_average_microvolts(samples);
+	}
+
+	/** Compile-time sample count, for call sites that had one. */
+	template <std::size_t Samples>
+	Result<Microvolts> read_average_microvolts() const noexcept
+	{
+		static_assert(Samples > 0U, "at least one ADC sample is required");
+		return divider_.read_average_microvolts(Samples);
+	}
+
+	/**
+	 * Read the cell and report its state of charge.
+	 *
+	 * Averages the configured conversions, converts the microvolt reading down
+	 * to the curve's millivolt scale, and interpolates @p curve. Only the read
+	 * can fail: @p curve is already validated, so `percent_at()` cannot fail
+	 * and there is nothing to report.
+	 */
+	template <std::size_t Points>
+	Result<std::uint8_t> percent(const BatteryCurve<Points> &curve) const noexcept
+	{
+		ZEST_TRY_ASSIGN(cell, read_average_microvolts());
+		return curve.percent_at(quantity_cast<Millivolts>(cell));
 	}
 
       private:

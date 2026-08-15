@@ -145,7 +145,8 @@ zest::AdcChannel channel{ADC_DT_SPEC_GET(DT_ALIAS(sensor))};
 
 ZEST_TRY(channel.init());
 ZEST_TRY_ASSIGN(raw, channel.read_raw());
-ZEST_TRY_ASSIGN(millivolts, channel.read_average_millivolts(16));
+ZEST_TRY_ASSIGN(microvolts, channel.read_average_microvolts(16));
+const zest::Millivolts millivolts = zest::quantity_cast<zest::Millivolts>(*microvolts);
 ```
 
 Sample width follows the channel's configured resolution, so an 18- or 24-bit
@@ -156,19 +157,33 @@ Averaging uses `adc_sequence_options::extra_samplings`, entering the driver once
 for N samples instead of N times, with a fallback for drivers that decline
 multi-sampling.
 
+**One voltage scale to read from, the units to convert.** Every read resolves in
+microvolts — the finest scale the converter can resolve — and stops there. A
+coarser view of the same value is a `quantity_cast` to `Millivolts` or `Volts`,
+which may truncate: a microvolt-to-millivolt conversion is fine → coarse, the
+direction that needs an explicit conversion under the `std::chrono` rule. There
+is no separate millivolt read method because the units type already provides that
+conversion and the reader should not choose a rounding scale for the caller.
+Reporting at the finest scale keeps full resolution for small signals: a bridge,
+a thermocouple, an instrumentation amplifier's output.
+
 `VoltageDivider` is the reusable adaptor between `AdcChannel` and
 `BatteryMonitor`. It stays its own header because reconstructing an input voltage
-from a divider is not battery-specific.
+from a divider is not battery-specific, and it reconstructs at whatever scale it
+read, so a divider over a microvolt read returns microvolts.
 
 ```text
-AdcChannel -> VoltageDivider -> BatteryMonitor -> BatteryCurve::percent_at()
+AdcChannel -> VoltageDivider -> BatteryMonitor::percent(BatteryCurve)
 ```
 
 `zest/battery.hpp` holds both halves of the battery layer, but they remain
 separate types because they fail differently. A discharge curve is a constant of
-the design, validated once; reading the cell is I/O that fails per call. Fusing
-them would force every charge estimate to handle three `CurveError` cases a valid
-literal can never produce.
+the design, validated once, and carries its voltages as `Millivolts`; reading the
+cell is I/O that fails per call. Fusing them would force every charge estimate to
+handle three `CurveError` cases a valid literal can never produce. `BatteryMonitor`
+composes the two: it owns the divider and the averaging policy and reads the cell
+in microvolts; the curve is passed to `percent()`, which converts the reading
+down to the curve's millivolt scale and interpolates.
 
 `battery_curve()` is `consteval`, so a malformed literal curve fails the build
 rather than becoming a runtime error nobody handles. `percent_at()` cannot fail.

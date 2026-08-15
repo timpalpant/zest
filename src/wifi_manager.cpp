@@ -129,6 +129,12 @@ bool WifiManager::owns_interface() const noexcept
 	return instance_ == this && iface_ != nullptr;
 }
 
+bool WifiManager::ipv4_ready() const noexcept
+{
+	return iface_ != nullptr &&
+	       net_if_ipv4_get_global_addr(iface_, NET_ADDR_PREFERRED) != nullptr;
+}
+
 void WifiManager::set_state(State state) noexcept
 {
 	atomic_set(&state_, static_cast<atomic_val_t>(state));
@@ -184,8 +190,10 @@ void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const 
 
 	if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const auto *result = static_cast<const struct wifi_status *>(info);
-		if (result != nullptr && result->status != 0) {
-			set_state(State::disconnected);
+		if (result != nullptr) {
+			/* A successful connect result is as good as the DHCP-bound
+			 * notification: on some drivers it is the only one raised. */
+			set_state(result->status == 0 ? State::connected : State::disconnected);
 		}
 	} else if (event == NET_EVENT_IPV4_DHCP_BOUND) {
 		set_state(State::connected);
@@ -255,6 +263,17 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 	}};
 
 	for (;;) {
+		/*
+		 * An address on the interface is the ground truth. A DHCP-bound
+		 * notification can be lost if the net management event queue backs
+		 * up, which would otherwise strand the wait below on a signal that
+		 * never comes and waste the whole timeout.
+		 */
+		if (ipv4_ready()) {
+			set_state(State::connected);
+			return status();
+		}
+
 		const auto remaining = deadline - uptime();
 		if (remaining <= std::chrono::milliseconds::zero()) {
 			set_state(State::disconnected);

@@ -101,8 +101,8 @@ Every fallible operation returns `zest::Result<T>`, which is
 what an `int` costs, and always has a description:
 
 ```cpp
-if (auto millivolts = battery.read_millivolts()) {
-    LOG_INF("battery %d mV", millivolts->count());
+if (auto microvolts = battery.read_microvolts()) {
+    LOG_INF("battery %d uV", microvolts->count());
 } else {
     LOG_ERR("battery read failed: %.*s",
             static_cast<int>(millivolts.error().message().size()),
@@ -124,8 +124,8 @@ zest::Result<> start() noexcept
 {
     ZEST_TRY(channel.init());
     ZEST_TRY(pump.init());
-    ZEST_TRY_ASSIGN(millivolts, channel.read_millivolts());
-    return controller.begin(millivolts);
+    ZEST_TRY_ASSIGN(microvolts, channel.read_microvolts());
+    return controller.begin(microvolts);
 }
 ```
 
@@ -169,23 +169,23 @@ zest::Result<> sample() noexcept
 {
     ZEST_TRY(analog.init());
     ZEST_TRY(led.init());
-    ZEST_TRY_ASSIGN(millivolts, analog.read_average_millivolts(16));
+    ZEST_TRY_ASSIGN(microvolts, analog.read_average_microvolts(16));
+    const zest::Millivolts millivolts = zest::quantity_cast<zest::Millivolts>(*microvolts);
     return led.set(millivolts > 1000_mV ? zest::GpioState::active
                                         : zest::GpioState::inactive);
 }
 ```
 
-`read_average_millivolts(n)` takes the burst in one hardware sequence rather than
+`read_average_microvolts(n)` takes the burst in one hardware sequence rather than
 entering the driver `n` times. On a bus-attached converter that is the difference
 between one transaction and `n` round trips.
 
-There is a microvolt read for every millivolt one --- `read_microvolts()` and
-`read_average_microvolts(n)`. Millivolts are the wrong unit for a
-high-resolution part: a 16-bit converter across a 2 V span resolves about 31 uV,
-so rounding to millivolts discards five bits of exactly the resolution such a
-part was chosen for. Reach for microvolts whenever the signal is smaller than a
-few hundred millivolts --- a bridge, a thermocouple, or an instrumentation
-amplifier's output.
+Every read resolves in microvolts, the finest scale the converter can report, and
+stops there. A coarser view of the same value is a `quantity_cast` to `Millivolts`
+or `Volts` --- which may truncate, since fine-to-coarse is the direction that
+needs an explicit conversion. There is no separate millivolt read method: the
+units type already provides that conversion, so the reader does not choose a
+rounding scale on the caller's behalf.
 
 Averaging happens in the raw domain, so a burst costs one raw-to-voltage
 conversion rather than `n`, and nothing is rounded to the output unit before the
@@ -202,29 +202,39 @@ on most SoCs.
 
 Measurement and charge estimation live in one header but stay separate types,
 because they fail differently: a curve is a constant of the design, checked once,
-while reading the cell is I/O that fails per call.
+while reading the cell is I/O that fails per call. `BatteryMonitor` composes the
+two --- it reads the cell; the curve, passed to `percent()`, turns the reading
+into a charge estimate.
 
 ```cpp
 #include <zest/battery.hpp>
 
 // Validated at compile time: a malformed curve fails the build.
 constexpr auto discharge = zest::battery_curve(std::array{
-    zest::CurvePoint{4200, 100},
-    zest::CurvePoint{3700, 10},
-    zest::CurvePoint{3300, 0},
+    zest::CurvePoint{zest::Millivolts{4200}, 100},
+    zest::CurvePoint{zest::Millivolts{3700}, 10},
+    zest::CurvePoint{zest::Millivolts{3300}, 0},
 });
 
+// Defaults to 16 averaged conversions; pass a lower number for a faster read.
 constexpr zest::BatteryMonitor battery{
     ADC_DT_SPEC_GET(DT_NODELABEL(vbatt)),
     zest::Ohms{DT_PROP(DT_NODELABEL(vbatt), output_ohms)},
     zest::Ohms{DT_PROP(DT_NODELABEL(vbatt), full_ohms)},
+    /* oversample = */ 32,
 };
 
 zest::Result<std::uint8_t> charge() noexcept
 {
     ZEST_TRY(battery.init());
-    ZEST_TRY_ASSIGN(millivolts, battery.read_millivolts());
-    return discharge.percent_at(millivolts.count());  // cannot fail
+    return battery.percent(discharge);  // only the read can fail
+}
+
+// The raw reading is also available, in microvolts.
+zest::Result<zest::Microvolts> cell_voltage() noexcept
+{
+    ZEST_TRY(battery.init());
+    return battery.read_average_microvolts();
 }
 ```
 

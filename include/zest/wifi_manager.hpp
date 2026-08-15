@@ -185,6 +185,7 @@ class WifiManager
 	void handle_event(std::uint64_t event, struct net_if *iface, const void *info) noexcept;
 	void set_state(State state) noexcept;
 	void record_scan_result(const void *info) noexcept;
+	[[nodiscard]] bool ipv4_ready() const noexcept;
 
 	struct net_if *iface_{};
 	struct net_mgmt_event_callback wifi_callback_{};

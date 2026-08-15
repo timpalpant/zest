@@ -210,7 +210,7 @@ inline constexpr Error not_permitted{-EPERM};
  * Bind the value of @p expr to a new reference @p name, or return its error.
  *
  * ```cpp
- * ZEST_TRY_ASSIGN(millivolts, battery.read_millivolts());
+ * ZEST_TRY_ASSIGN(microvolts, battery.read_microvolts());
  * ```
  */
 #define ZEST_TRY_ASSIGN(name, expr)                                                                \
