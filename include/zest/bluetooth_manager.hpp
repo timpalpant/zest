@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <zest/atomic.hpp>
 #include <zest/error.hpp>
 #include <zest/function.hpp>
 #include <zest/kernel.hpp>
@@ -106,7 +107,7 @@ class BluetoothManager
 	Semaphore state_changed_{0U, 1U};
 	Mutex mutex_{};
 	StateHandler state_handler_{};
-	atomic_t state_{ATOMIC_INIT(static_cast<atomic_val_t>(State::disabled))};
+	Atomic<State> state_{State::disabled};
 	int connection_error_{};
 	bool advertising_{false};
 

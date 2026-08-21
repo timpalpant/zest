@@ -137,7 +137,7 @@ bool WifiManager::ipv4_ready() const noexcept
 
 void WifiManager::set_state(State state) noexcept
 {
-	atomic_set(&state_, static_cast<atomic_val_t>(state));
+	state_.store(state);
 	if (state_handler_) {
 		state_handler_(state);
 	}
@@ -418,7 +418,7 @@ WifiManager::ConnectionInfo WifiManager::status() const noexcept
 
 WifiManager::State WifiManager::state() const noexcept
 {
-	return static_cast<State>(atomic_get(&state_));
+	return state_.load();
 }
 
 const char *to_string(WifiManager::State state) noexcept

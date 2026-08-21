@@ -45,7 +45,7 @@ bool BluetoothManager::owns_stack() const noexcept
 
 void BluetoothManager::set_state(State state) noexcept
 {
-	atomic_set(&state_, static_cast<atomic_val_t>(state));
+	state_.store(state);
 	if (state_handler_) {
 		state_handler_(state);
 	}
@@ -254,7 +254,7 @@ Result<> BluetoothManager::disconnect() noexcept
 
 BluetoothManager::State BluetoothManager::state() const noexcept
 {
-	return static_cast<State>(atomic_get(&state_));
+	return state_.load();
 }
 
 void BluetoothManager::connected_callback(struct bt_conn *connection, std::uint8_t error) noexcept

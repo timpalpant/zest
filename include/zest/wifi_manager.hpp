@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <zest/atomic.hpp>
 #include <zest/error.hpp>
 #include <zest/function.hpp>
 #include <zest/kernel.hpp>
@@ -199,7 +200,7 @@ class WifiManager
 	StateHandler state_handler_{};
 	std::span<WifiScanResult> scan_results_{};
 	std::size_t scan_count_{0U};
-	atomic_t state_{ATOMIC_INIT(static_cast<atomic_val_t>(State::disconnected))};
+	Atomic<State> state_{State::disconnected};
 	bool callbacks_registered_{};
 	bool scanning_{};
 

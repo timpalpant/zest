@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <zest/atomic.hpp>
 #include <zest/error.hpp>
 #include <zest/kernel.hpp>
 
@@ -78,7 +79,7 @@ class NetworkMonitor
 	Callback ipv4_callback_{};
 	Callback ipv6_callback_{};
 	Semaphore changed_{0U, 1U};
-	atomic_t flags_{ATOMIC_INIT(0)};
+	Atomic<atomic_val_t> flags_{0};
 	bool started_{};
 };
 

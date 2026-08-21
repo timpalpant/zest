@@ -54,16 +54,16 @@ Result<> NetworkMonitor::start() noexcept
 	started_ = true;
 
 	if (net_if_is_up(interface_)) {
-		atomic_or(&flags_, interface_up);
+		flags_.fetch_or(interface_up);
 	}
 	if (net_if_ipv4_get_global_addr(interface_, NET_ADDR_PREFERRED) != nullptr) {
-		atomic_or(&flags_, ipv4_ready);
+		flags_.fetch_or(ipv4_ready);
 	}
 #if defined(CONFIG_NET_IPV6)
 	auto *ipv6_interface = interface_;
 	if (net_if_ipv6_get_global_addr(NET_ADDR_PREFERRED, &ipv6_interface) != nullptr &&
 	    ipv6_interface == interface_) {
-		atomic_or(&flags_, ipv6_ready);
+		flags_.fetch_or(ipv6_ready);
 	}
 #endif
 	return {};
@@ -84,7 +84,7 @@ void NetworkMonitor::stop() noexcept
 
 NetworkState NetworkMonitor::state() const noexcept
 {
-	const auto flags = atomic_get(&flags_);
+	const auto flags = flags_.load();
 	return {
 		.interface_up = (flags & interface_up) != 0,
 		.ipv4_ready = (flags & ipv4_ready) != 0,
@@ -155,18 +155,18 @@ void NetworkMonitor::handle(std::uint64_t event, net_if *interface) noexcept
 		return;
 	}
 	if (event == NET_EVENT_IF_UP) {
-		atomic_or(&flags_, interface_up);
+		flags_.fetch_or(interface_up);
 	} else if (event == NET_EVENT_IF_DOWN) {
-		atomic_and(&flags_, ~(interface_up | ipv4_ready | ipv6_ready));
+		flags_.fetch_and(~(interface_up | ipv4_ready | ipv6_ready));
 	} else if (event == NET_EVENT_IPV4_ADDR_ADD || event == NET_EVENT_IPV4_DHCP_BOUND) {
-		atomic_or(&flags_, ipv4_ready);
+		flags_.fetch_or(ipv4_ready);
 	} else if (event == NET_EVENT_IPV4_ADDR_DEL || event == NET_EVENT_IPV4_DHCP_STOP) {
-		atomic_and(&flags_, ~ipv4_ready);
+		flags_.fetch_and(~ipv4_ready);
 #if defined(CONFIG_NET_IPV6)
 	} else if (event == NET_EVENT_IPV6_ADDR_ADD) {
-		atomic_or(&flags_, ipv6_ready);
+		flags_.fetch_or(ipv6_ready);
 	} else if (event == NET_EVENT_IPV6_ADDR_DEL) {
-		atomic_and(&flags_, ~ipv6_ready);
+		flags_.fetch_and(~ipv6_ready);
 #endif
 	}
 	changed_.give();
