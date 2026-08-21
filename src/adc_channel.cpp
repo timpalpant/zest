@@ -9,6 +9,7 @@
 #include <zephyr/drivers/adc.h>
 
 #include <array>
+#include <cerrno>
 #include <cstdint>
 
 namespace zest
@@ -85,7 +86,8 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 	 * bus-attached converter it is the difference between one transaction and
 	 * N round trips.
 	 */
-	if (samples <= kMaxBurst && !wide_samples()) {
+	if (samples <= kMaxBurst && !wide_samples() &&
+	    burst_ != BurstSupport::unsupported) {
 		std::array<std::uint16_t, kMaxBurst> buffer{};
 		const adc_sequence_options options{
 			.interval_us = 0U,
@@ -99,7 +101,9 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 			sequence.buffer = buffer.data();
 			sequence.buffer_size = samples * sizeof(std::uint16_t);
 
-			if (adc_read_dt(&spec_, &sequence) == 0) {
+			const int status = adc_read_dt(&spec_, &sequence);
+			if (status == 0) {
+				burst_ = BurstSupport::supported;
 				const bool differential = spec_.channel_cfg.differential;
 				std::int64_t total = 0;
 				for (std::size_t i = 0; i < samples; ++i) {
@@ -118,7 +122,24 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 				return static_cast<std::int32_t>(
 					total / static_cast<std::int64_t>(samples));
 			}
-			/* Driver declined multi-sampling; fall through. */
+
+			/*
+			 * The driver declined; fall through to the per-sample
+			 * loop, which every driver supports.
+			 *
+			 * -ENOTSUP is it saying it has no multi-sample path at
+			 * all. That is a property of the driver and will not
+			 * change, so latch it and never ask this channel again:
+			 * several drivers, adc_esp32.c among them, LOG_ERR when
+			 * they decline, and a caller averaging on a timer would
+			 * otherwise fill the console with one driver error per
+			 * reading. Any other status is transient --- a busy
+			 * converter, a bus that glitched --- so it is not
+			 * remembered and the burst is tried again next time.
+			 */
+			if (Error{status} == errors::not_supported) {
+				burst_ = BurstSupport::unsupported;
+			}
 		}
 	}
 

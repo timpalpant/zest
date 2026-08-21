@@ -391,6 +391,16 @@ ZTEST(zest_smoke, test_adc_surface_compiles)
 		noexcept(std::declval<const zest::AdcChannel &>().read_average_microvolts(16)));
 
 	/*
+	 * A channel stays a trivially copyable value even though it caches what its
+	 * driver can do: holders like VoltageDivider keep one by value, and the
+	 * cache is a plain member rather than an Atomic precisely so that the
+	 * implicit copy and move operations survive.
+	 */
+	static_assert(std::is_trivially_copyable_v<zest::AdcChannel>);
+	static_assert(std::is_nothrow_copy_constructible_v<zest::AdcChannel>);
+	static_assert(std::is_nothrow_copy_assignable_v<zest::AdcChannel>);
+
+	/*
 	 * The scale is carried in the type, so a microvolt reading cannot silently
 	 * be used where a millivolt one was meant.
 	 */

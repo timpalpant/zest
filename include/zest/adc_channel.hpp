@@ -60,7 +60,10 @@ class AdcChannel
 	 *
 	 * Uses `adc_sequence_options::extra_samplings`, so the driver is entered
 	 * once rather than once per sample. Drivers that reject multi-sampling fall
-	 * back to repeated single conversions automatically.
+	 * back to repeated single conversions automatically, and are asked only
+	 * once: several of them log an error of their own when they decline, so a
+	 * caller averaging on a timer would otherwise produce one driver error per
+	 * reading for an operation that is working.
 	 */
 	[[nodiscard]] Result<Microvolts>
 	read_average_microvolts(std::size_t samples) const noexcept;
@@ -103,7 +106,34 @@ class AdcChannel
 	 */
 	[[nodiscard]] Result<std::int32_t> read_average_raw(std::size_t samples) const noexcept;
 
+	/**
+	 * Whether the driver behind this channel accepts a multi-sample sequence.
+	 *
+	 * Discovered by asking, because the ADC API has no capability query, and
+	 * then remembered, because the answer is a property of the driver rather
+	 * than of any one reading.
+	 */
+	enum class BurstSupport : std::uint8_t {
+		unknown,
+		supported,
+		unsupported,
+	};
+
 	adc_dt_spec spec_;
+
+	/*
+	 * Mutable because reading is const and this is a cache of what the driver
+	 * can do, not state a caller can observe.
+	 *
+	 * Deliberately a plain member and not a zest::Atomic. Zephyr's ADC drivers
+	 * serialize concurrent reads on a device, so two threads may share one
+	 * channel and race here --- but they race to write the same value, because
+	 * a driver either has a multi-sample path or it does not, and that does not
+	 * vary per call. Losing the race costs one redundant probe, and an Atomic
+	 * would cost the type its implicit copy and move operations for a hint that
+	 * converges either way.
+	 */
+	mutable BurstSupport burst_{BurstSupport::unknown};
 };
 
 } /* namespace zest */
