@@ -86,8 +86,7 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 	 * bus-attached converter it is the difference between one transaction and
 	 * N round trips.
 	 */
-	if (samples <= kMaxBurst && !wide_samples() &&
-	    burst_ != BurstSupport::unsupported) {
+	if (samples <= kMaxBurst && !wide_samples() && burst_ != BurstSupport::unsupported) {
 		std::array<std::uint16_t, kMaxBurst> buffer{};
 		const adc_sequence_options options{
 			.interval_us = 0U,

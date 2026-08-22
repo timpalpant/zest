@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -eu
+
+mapfile -d '' files < <(
+	git diff --cached --name-only --diff-filter=ACMR -z \
+		| grep -zE '\.(cpp|hpp)$' || true
+)
+
+if [ "${#files[@]}" -eq 0 ]; then
+	exit 0
+fi
+
+clang-format -i -- "${files[@]}"
+git add -- "${files[@]}"
