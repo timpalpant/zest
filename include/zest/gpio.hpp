@@ -7,8 +7,11 @@
 #pragma once
 
 #include <zest/error.hpp>
+#include <zest/kernel.hpp>
 
 #include <zephyr/drivers/gpio.h>
+
+#include <chrono>
 
 namespace zest
 {
@@ -17,6 +20,13 @@ namespace zest
 enum class GpioState {
 	inactive,
 	active,
+};
+
+/** The logical transition that wakes an interrupt-driven input. */
+enum class GpioEdge {
+	to_active,
+	to_inactive,
+	both,
 };
 
 /** The opposite logical state. */
@@ -51,6 +61,65 @@ class GpioInput
 
       private:
 	gpio_dt_spec spec_;
+};
+
+/** An interrupt-driven digital input with thread-context edge waits. */
+class GpioInterruptInput
+{
+      public:
+	explicit GpioInterruptInput(gpio_dt_spec spec) noexcept : input_{spec}
+	{
+	}
+	~GpioInterruptInput() noexcept;
+	GpioInterruptInput(const GpioInterruptInput &) = delete;
+	GpioInterruptInput &operator=(const GpioInterruptInput &) = delete;
+
+	/** Configure the pin as an input. */
+	[[nodiscard]] Result<> init() const noexcept
+	{
+		return input_.init();
+	}
+
+	/** Read the pin's logical active/inactive state. */
+	[[nodiscard]] Result<GpioState> get() const noexcept
+	{
+		return input_.get();
+	}
+
+	/** Enable interrupt wakeups for a logical edge (active-low is respected). */
+	[[nodiscard]] Result<> enable_interrupts(GpioEdge edge) noexcept;
+
+	/** Disable interrupt wakeups and discard any pending wakeup. */
+	void disable_interrupts() noexcept;
+
+	/** Wait in thread context for an enabled edge interrupt. */
+	template <typename Rep, typename Period>
+	[[nodiscard]] Result<> wait(std::chrono::duration<Rep, Period> timeout) noexcept
+	{
+		if (!interrupts_enabled_) {
+			return fail(errors::not_connected);
+		}
+		return activity_.take(timeout);
+	}
+
+	[[nodiscard]] constexpr bool interrupts_enabled() const noexcept
+	{
+		return interrupts_enabled_;
+	}
+
+	[[nodiscard]] constexpr const gpio_dt_spec &native_spec() const noexcept
+	{
+		return input_.native_spec();
+	}
+
+      private:
+	static void interrupt_callback(const struct device *, gpio_callback *callback,
+				       gpio_port_pins_t) noexcept;
+
+	GpioInput input_;
+	gpio_callback callback_{};
+	Semaphore activity_{0U, 1U};
+	bool interrupts_enabled_{false};
 };
 
 /**

@@ -13,6 +13,19 @@ namespace zest
 namespace
 {
 
+[[nodiscard]] constexpr gpio_flags_t as_flags(GpioEdge edge) noexcept
+{
+	switch (edge) {
+	case GpioEdge::to_active:
+		return GPIO_INT_EDGE_TO_ACTIVE;
+	case GpioEdge::to_inactive:
+		return GPIO_INT_EDGE_TO_INACTIVE;
+	case GpioEdge::both:
+		return GPIO_INT_EDGE_BOTH;
+	}
+	return GPIO_INT_DISABLE;
+}
+
 [[nodiscard]] constexpr int as_value(GpioState state) noexcept
 {
 	return state == GpioState::active ? 1 : 0;
@@ -51,6 +64,48 @@ Result<> GpioInput::init() const noexcept
 Result<GpioState> GpioInput::get() const noexcept
 {
 	return read(spec_);
+}
+
+GpioInterruptInput::~GpioInterruptInput() noexcept
+{
+	disable_interrupts();
+}
+
+Result<> GpioInterruptInput::enable_interrupts(GpioEdge edge) noexcept
+{
+	if (interrupts_enabled_) {
+		return {};
+	}
+
+	const auto &spec = input_.native_spec();
+	gpio_init_callback(&callback_, interrupt_callback, BIT(spec.pin));
+	ZEST_TRY(check(gpio_add_callback(spec.port, &callback_)));
+
+	if (const int rc = gpio_pin_interrupt_configure_dt(&spec, as_flags(edge)); rc < 0) {
+		(void)gpio_remove_callback(spec.port, &callback_);
+		return fail(rc);
+	}
+	interrupts_enabled_ = true;
+	return {};
+}
+
+void GpioInterruptInput::disable_interrupts() noexcept
+{
+	if (!interrupts_enabled_) {
+		return;
+	}
+	const auto &spec = input_.native_spec();
+	(void)gpio_pin_interrupt_configure_dt(&spec, GPIO_INT_DISABLE);
+	(void)gpio_remove_callback(spec.port, &callback_);
+	activity_.reset();
+	interrupts_enabled_ = false;
+}
+
+void GpioInterruptInput::interrupt_callback(const struct device *, gpio_callback *callback,
+					    gpio_port_pins_t) noexcept
+{
+	auto *self = CONTAINER_OF(callback, GpioInterruptInput, callback_);
+	self->activity_.give();
 }
 
 Result<> GpioOutput::init(GpioState initial, bool enable_readback) noexcept

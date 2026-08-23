@@ -26,7 +26,7 @@ part has a double-precision FPU.
 | --- | --- |
 | Errors | `Error`, `Result<T>`, `check()`, `ZEST_TRY`, `errors::*` |
 | Units | `Quantity`, `Millivolts`, `Milliamps`, `Ohms`, `MilliCelsius`, `Hertz`, literals |
-| Analog and digital I/O | `AdcChannel`, `VoltageDivider`, `GpioInput`, `GpioOutput`, `Button` |
+| Analog and digital I/O | `AdcChannel`, `VoltageDivider`, `GpioInput`, `GpioInterruptInput`, `GpioOutput`, `Button` |
 | Signal processing | `MovingAverage`, `MedianFilter`, `ExponentialMovingAverage`, `ShiftMovingAverage`, `Hysteresis`, `ThresholdDetector` |
 | Transforms | `Calibration`, `IntegerCalibration`, `LinearMap`, `integer_map` |
 | Control | `PidController`, `SlewRateLimiter`, `slew_toward`, `StateMachine` |
@@ -201,6 +201,22 @@ negative reading into a large positive one.
 pin back needs `init(state, /* enable_readback = */ true)`, because Zephyr's
 `gpio_pin_get_dt()` is for input pins and an output-only pin has no input buffer
 on most SoCs.
+
+`GpioInterruptInput` can wake a thread directly on a logical edge, without
+exposing Zephyr's callback bookkeeping to the application. Plain `GpioInput`
+stays a lightweight copyable handle for inputs that only need sampling.
+
+```cpp
+zest::GpioInterruptInput ready{GPIO_DT_SPEC_GET(DT_ALIAS(ready), gpios)};
+
+ZEST_TRY(ready.init());
+ZEST_TRY(ready.enable_interrupts(zest::GpioEdge::to_active));
+ZEST_TRY(ready.wait(std::chrono::milliseconds::max()));
+```
+
+The interrupt handler only signals an internal semaphore; `wait()` resumes in
+thread context. Active-low devicetree flags are respected, and the input disables
+and removes its callback when destroyed.
 
 ### Battery
 

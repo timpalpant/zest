@@ -23,11 +23,11 @@ config ZEST_ADC_CHANNEL
 	  results.
 
 config ZEST_GPIO
-	bool "GpioInput and GpioOutput"
+	bool "GPIO inputs and outputs"
 	depends on GPIO
 	help
-	  Typed digital input and output handles using logical active/inactive
-	  states.
+	  Typed polling and interrupt-driven digital inputs, and digital outputs,
+	  using logical active/inactive states.
 
 config ZEST_BUTTON
 	bool "Button"

@@ -198,7 +198,7 @@ void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const 
 			 * installed (for example, by static configuration). */
 			if (result->status != 0) {
 				set_state(State::disconnected);
-			} else if (ipv4_ready()) {
+			} else if (!IS_ENABLED(CONFIG_NET_DHCPV4) && ipv4_ready()) {
 				set_state(State::connected);
 			}
 		}
@@ -276,11 +276,6 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 		 * up, which would otherwise strand the wait below on a signal that
 		 * never comes and waste the whole timeout.
 		 */
-		if (ipv4_ready()) {
-			set_state(State::connected);
-			return status();
-		}
-
 		const auto remaining = deadline - uptime();
 		if (remaining <= std::chrono::milliseconds::zero()) {
 			set_state(State::disconnected);
@@ -304,13 +299,30 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 			return fail(rc);
 		}
 
-		const bool signaled = state_changed_.take(remaining).has_value();
-		if (connected()) {
-			return status();
-		}
-		if (!signaled) {
-			set_state(State::disconnected);
-			return fail(errors::timed_out);
+		/* Events provide prompt wakeups, but the address installed on the
+		 * interface remains the source of truth. Recheck it periodically so
+		 * a dropped or driver-specific DHCP notification cannot strand this
+		 * call until its full timeout. A polling timeout is not an association
+		 * failure and must not cause another connect request. */
+		constexpr auto poll_interval = std::chrono::milliseconds{250};
+		for (;;) {
+			/* The address table is authoritative. Some drivers install the
+			 * DHCP lease before (or without) delivering DHCP_BOUND to this
+			 * callback, so requiring both signals can strand a usable link. */
+			if (ipv4_ready()) {
+				set_state(State::connected, false);
+				return status();
+			}
+			if (state() == State::disconnected) {
+				break;
+			}
+
+			const auto wait_remaining = deadline - uptime();
+			if (wait_remaining <= std::chrono::milliseconds::zero()) {
+				set_state(State::disconnected);
+				return fail(errors::timed_out);
+			}
+			(void)state_changed_.take(std::min(poll_interval, wait_remaining));
 		}
 
 		const auto before_retry = deadline - uptime();
@@ -407,12 +419,12 @@ WifiManager::ConnectionInfo WifiManager::status() const noexcept
 		return result;
 	}
 
-	struct wifi_iface_status wifi_status{};
-	if (net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface_, &wifi_status, sizeof(wifi_status)) ==
-	    0) {
-		result.rssi = wifi_status.rssi;
-		result.channel = wifi_status.channel;
-	}
+	/* Do not synchronously query NET_REQUEST_WIFI_IFACE_STATUS here. The ESP32
+	 * driver can block that request immediately after DHCP has bound, which
+	 * prevents connect() from returning even though the interface is usable.
+	 * Address information is maintained by the network core and is safe to
+	 * inspect directly. RSSI and channel remain zero until a nonblocking status
+	 * path is provided by the driver/API. */
 
 	const struct net_in_addr *address = net_if_ipv4_get_global_addr(iface_, NET_ADDR_PREFERRED);
 	if (address != nullptr) {

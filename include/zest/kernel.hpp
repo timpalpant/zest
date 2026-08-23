@@ -45,7 +45,21 @@ template <typename Rep, typename Period>
 		return K_NO_WAIT;
 	}
 
-	/* Round up to the next whole microsecond. */
+	/* Use Zephyr's millisecond timeout encoding whenever it can represent the
+	 * request. On ESP32-C6, long K_USEC timeouts have been observed failing to
+	 * wake after the Wi-Fi driver starts, while K_MSEC/K_SECONDS timers continue
+	 * normally. Preserve K_USEC only for genuinely sub-millisecond waits. */
+	if (value >= std::chrono::milliseconds{1}) {
+		const std::int64_t milliseconds =
+			std::chrono::ceil<std::chrono::milliseconds>(value).count();
+		constexpr std::int64_t kMaxMilliseconds = std::int64_t{1} << 42;
+		if (milliseconds >= kMaxMilliseconds) {
+			return K_FOREVER;
+		}
+		return K_MSEC(milliseconds);
+	}
+
+	/* Round a sub-millisecond request up to the next whole microsecond. */
 	const std::int64_t microseconds =
 		std::chrono::ceil<std::chrono::microseconds>(value).count();
 	if (microseconds <= 0) {

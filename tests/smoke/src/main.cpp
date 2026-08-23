@@ -425,6 +425,13 @@ ZTEST(zest_smoke, test_adc_surface_compiles)
 ZTEST(zest_smoke, test_gpio_output_tracks_state_without_reading_the_pin)
 {
 	static_assert(std::is_nothrow_constructible_v<zest::GpioOutput, gpio_dt_spec>);
+	static_assert(std::is_nothrow_constructible_v<zest::GpioInput, gpio_dt_spec>);
+	static_assert(std::is_nothrow_copy_constructible_v<zest::GpioInput>);
+	static_assert(std::is_nothrow_constructible_v<zest::GpioInterruptInput, gpio_dt_spec>);
+	static_assert(!std::is_copy_constructible_v<zest::GpioInterruptInput>);
+	static_assert(std::is_same_v<decltype(std::declval<zest::GpioInterruptInput &>().wait(
+					     std::chrono::milliseconds::max())),
+				     zest::Result<>>);
 
 	/*
 	 * state() is exact and infallible because the object remembers what it

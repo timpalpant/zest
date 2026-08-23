@@ -98,31 +98,13 @@ template <typename Clock = std::chrono::steady_clock> class Button
 		if (!initialized_) {
 			return fail(errors::not_connected);
 		}
-		if (interrupts_enabled_) {
-			return {};
-		}
-		const auto &spec = input_.native_spec();
-		gpio_init_callback(&callback_, interrupt_callback, BIT(spec.pin));
-		ZEST_TRY(check(gpio_add_callback(spec.port, &callback_)));
-
-		if (const int rc = gpio_pin_interrupt_configure_dt(&spec, GPIO_INT_EDGE_BOTH);
-		    rc < 0) {
-			(void)gpio_remove_callback(spec.port, &callback_);
-			return fail(rc);
-		}
-		interrupts_enabled_ = true;
-		return {};
+		return input_.interrupts_enabled() ? Result<>{}
+						   : input_.enable_interrupts(GpioEdge::both);
 	}
 
 	void disable_interrupts() noexcept
 	{
-		if (!interrupts_enabled_) {
-			return;
-		}
-		const auto &spec = input_.native_spec();
-		(void)gpio_pin_interrupt_configure_dt(&spec, GPIO_INT_DISABLE);
-		(void)gpio_remove_callback(spec.port, &callback_);
-		interrupts_enabled_ = false;
+		input_.disable_interrupts();
 	}
 
 	/** Poll the GPIO and report any debounced events. */
@@ -192,8 +174,8 @@ template <typename Clock = std::chrono::steady_clock> class Button
 			if (!forever && clock::now() - started >= timeout) {
 				return fail(errors::timed_out);
 			}
-			if (interrupts_enabled_) {
-				(void)activity_.take(poll_interval);
+			if (input_.interrupts_enabled()) {
+				(void)input_.wait(poll_interval);
 			} else {
 				sleep_for(poll_interval);
 			}
@@ -202,26 +184,16 @@ template <typename Clock = std::chrono::steady_clock> class Button
 
 	[[nodiscard]] constexpr bool interrupts_enabled() const noexcept
 	{
-		return interrupts_enabled_;
+		return input_.interrupts_enabled();
 	}
 
       private:
-	static void interrupt_callback(const struct device *, gpio_callback *callback,
-				       gpio_port_pins_t) noexcept
-	{
-		auto *self = CONTAINER_OF(callback, Button, callback_);
-		self->activity_.give();
-	}
-
-	GpioInput input_;
+	GpioInterruptInput input_;
 	ButtonConfig config_;
 	Debouncer<bool, Clock> debouncer_;
 	time_point pressed_at_{};
 	bool initialized_{false};
 	bool long_press_sent_{false};
-	gpio_callback callback_{};
-	Semaphore activity_{0U, 1U};
-	bool interrupts_enabled_{false};
 };
 
 } /* namespace zest */
