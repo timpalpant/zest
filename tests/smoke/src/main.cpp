@@ -671,8 +671,8 @@ ZTEST(zest_smoke, test_watchdog_separates_device_from_channel)
 	/*
 	 * wdt_setup() is per-device and is rejected once running, so a
 	 * channel-shaped wrapper made the second install fail as if the driver were
-	 * broken. Channels now come from the device, and feeding before start() is
-	 * an explicit error.
+	 * broken. Channels now come from the device and retain the native Zephyr
+	 * device pointer rather than borrowing the WatchdogDevice wrapper.
 	 */
 	zest::WatchdogDevice watchdog{nullptr};
 	zassert_false(watchdog.running());

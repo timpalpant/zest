@@ -135,13 +135,15 @@ bool WifiManager::ipv4_ready() const noexcept
 	       net_if_ipv4_get_global_addr(iface_, NET_ADDR_PREFERRED) != nullptr;
 }
 
-void WifiManager::set_state(State state) noexcept
+void WifiManager::set_state(State state, bool notify_waiters) noexcept
 {
 	state_.store(state);
 	if (state_handler_) {
 		state_handler_(state);
 	}
-	state_changed_.give();
+	if (notify_waiters) {
+		state_changed_.give();
+	}
 }
 
 void WifiManager::event_handler(struct net_mgmt_event_callback *callback, std::uint64_t event,
@@ -191,9 +193,14 @@ void WifiManager::handle_event(std::uint64_t event, struct net_if *iface, const 
 	if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
 		const auto *result = static_cast<const struct wifi_status *>(info);
 		if (result != nullptr) {
-			/* A successful connect result is as good as the DHCP-bound
-			 * notification: on some drivers it is the only one raised. */
-			set_state(result->status == 0 ? State::connected : State::disconnected);
+			/* Association alone is not a usable connection when DHCP is
+			 * enabled. Wait for DHCP_BOUND unless an address is already
+			 * installed (for example, by static configuration). */
+			if (result->status != 0) {
+				set_state(State::disconnected);
+			} else if (ipv4_ready()) {
+				set_state(State::connected);
+			}
 		}
 	} else if (event == NET_EVENT_IPV4_DHCP_BOUND) {
 		set_state(State::connected);
@@ -287,7 +294,9 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 		 * escaping as a false terminal failure.
 		 */
 		state_changed_.reset();
-		set_state(State::connecting);
+		/* Report the transition without waking our own wait below. Only a
+		 * driver/network event may complete this attempt. */
+		set_state(State::connecting, false);
 
 		const int rc = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface_, &params, sizeof(params));
 		if (rc != 0 && rc != -EALREADY) {

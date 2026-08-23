@@ -33,6 +33,10 @@ class WatchdogChannel;
  * (void)watchdog.start();
  * (void)worker->feed();
  * ```
+ *
+ * Installed channels do not borrow this wrapper. They retain the native Zephyr
+ * device pointer, whose lifetime is static, and may safely outlive the
+ * `WatchdogDevice` used to install them.
  */
 class WatchdogDevice
 {
@@ -75,9 +79,8 @@ class WatchdogDevice
 /**
  * A single installed watchdog channel.
  *
- * Obtained from `WatchdogDevice::install()`. Feeding a channel before the device
- * has been started reports `errors::permission_denied` rather than silently
- * doing nothing.
+ * Obtained from `WatchdogDevice::install()`. This is a self-contained value
+ * handle: it does not borrow the `WatchdogDevice` used to install it.
  */
 class WatchdogChannel
 {
@@ -93,12 +96,12 @@ class WatchdogChannel
       private:
 	friend class WatchdogDevice;
 
-	constexpr WatchdogChannel(const WatchdogDevice *owner, int channel) noexcept
-		: owner_{owner}, channel_{channel}
+	constexpr WatchdogChannel(const struct device *device, int channel) noexcept
+		: device_{device}, channel_{channel}
 	{
 	}
 
-	const WatchdogDevice *owner_{nullptr};
+	const struct device *device_{nullptr};
 	int channel_{-1};
 };
 

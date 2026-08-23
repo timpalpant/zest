@@ -277,8 +277,10 @@ meant a second channel's `init()` failed with an error that read like a driver
 fault.
 
 `WatchdogDevice` installs channels and is started once; `WatchdogChannel` only
-knows how to `feed()`, and reports `errors::permission_denied` if the device has
-not been started.
+knows how to `feed()`. A channel stores the native Zephyr device pointer, whose
+lifetime is static, rather than borrowing its `WatchdogDevice` facade. The
+facade may therefore be temporary without leaving installed channels dangling.
+Feeding before setup is left to the native driver to reject.
 
 ## 12. Persistence
 

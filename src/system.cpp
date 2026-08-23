@@ -106,7 +106,7 @@ Result<WatchdogChannel> WatchdogDevice::install(std::chrono::milliseconds timeou
 		return fail(channel_result.error());
 	}
 	auto channel = *channel_result;
-	return WatchdogChannel{this, channel};
+	return WatchdogChannel{device_, channel};
 }
 
 Result<> WatchdogDevice::start(std::uint8_t options) noexcept
@@ -134,13 +134,10 @@ Result<> WatchdogDevice::stop() noexcept
 
 Result<> WatchdogChannel::feed() const noexcept
 {
-	if (owner_ == nullptr || channel_ < 0) {
+	if (device_ == nullptr || channel_ < 0) {
 		return fail(errors::invalid_argument);
 	}
-	if (!owner_->running()) {
-		return fail(errors::permission_denied);
-	}
-	return check(wdt_feed(owner_->native_handle(), channel_));
+	return check(wdt_feed(device_, channel_));
 }
 
 #endif /* CONFIG_ZEST_WATCHDOG */
