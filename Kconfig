@@ -225,7 +225,8 @@ config ZEST_WIFI_MANAGER
 	depends on NETWORKING && NET_IPV4 && WIFI
 	select NET_MGMT_EVENT_INFO
 	help
-	  Synchronous Wi-Fi station lifecycle wrapper that waits for DHCP.
+	  Synchronous Wi-Fi station lifecycle wrapper that owns association retries
+	  and waits for DHCP.
 
 config ZEST_BLUETOOTH_MANAGER
 	bool "BluetoothManager"

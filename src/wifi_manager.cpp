@@ -278,6 +278,10 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 		 */
 		const auto remaining = deadline - uptime();
 		if (remaining <= std::chrono::milliseconds::zero()) {
+			/* A driver may keep retrying after its connect result. Use the
+			 * generic disconnect request to leave the interface quiescent when
+			 * this manager gives up. */
+			(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface_, nullptr, 0);
 			set_state(State::disconnected);
 			return fail(errors::timed_out);
 		}
@@ -319,11 +323,20 @@ Result<WifiManager::ConnectionInfo> WifiManager::connect(const Credentials &cred
 
 			const auto wait_remaining = deadline - uptime();
 			if (wait_remaining <= std::chrono::milliseconds::zero()) {
+				(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface_, nullptr, 0);
 				set_state(State::disconnected);
 				return fail(errors::timed_out);
 			}
 			(void)state_changed_.take(std::min(poll_interval, wait_remaining));
 		}
+
+		/* Some drivers own an optional reconnect loop. A failed connect result
+		 * can therefore leave another association running in the background.
+		 * WIFI_DISCONNECT is the portable way to cancel that driver activity
+		 * before WifiManager applies its own retry policy. Drivers that are
+		 * already idle may reject the request; that is the desired state, so the
+		 * result is intentionally ignored. */
+		(void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface_, nullptr, 0);
 
 		const auto before_retry = deadline - uptime();
 		if (before_retry <= std::chrono::milliseconds::zero()) {
