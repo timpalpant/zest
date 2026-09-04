@@ -348,15 +348,19 @@ class I2sOutput: public I2sStream
 	/** As @ref write_with, with the span typed as samples of @p T. */
 	template <typename T, typename Fill>
 		requires(std::is_trivially_copyable_v<T> && std::is_invocable_v<Fill, std::span<T>>)
-	[[nodiscard]] Result<> write_samples_with(Fill &&fill) noexcept
+	[[nodiscard]] Result<>
+	write_samples_with(Fill &&fill, std::optional<std::chrono::milliseconds> wait = {}) noexcept
 	{
 		if (block_size_ % sizeof(T) != 0U) {
 			return fail(errors::invalid_argument);
 		}
-		return write_with([&](std::span<std::byte> bytes) noexcept {
-			std::forward<Fill>(fill)(std::span<T>{reinterpret_cast<T *>(bytes.data()),
-							      bytes.size() / sizeof(T)});
-		});
+		return write_with(
+			[&](std::span<std::byte> bytes) noexcept {
+				std::forward<Fill>(fill)(
+					std::span<T>{reinterpret_cast<T *>(bytes.data()),
+						     bytes.size() / sizeof(T)});
+			},
+			wait);
 	}
 
 	/**
