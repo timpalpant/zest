@@ -18,6 +18,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/uart.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -26,6 +27,44 @@
 
 namespace zest
 {
+
+/**
+ * What the interrupt has been doing, for a link that has gone quiet.
+ *
+ * A serial link that stops working is nearly always one of four things, and the
+ * four are indistinguishable from the application's side: the interrupt is not
+ * firing at all, bytes are arriving and being dropped, bytes are queued and the
+ * hardware is not taking them, or nothing is arriving. These separate them
+ * without a logic analyser.
+ *
+ * Written only from the interrupt and read from a thread. Each field is a
+ * naturally aligned 32-bit word, so a reader sees a whole value even when it
+ * races the update; a *set* of fields read together may straddle one interrupt,
+ * which is fine for diagnostics and wrong for arithmetic between them.
+ */
+struct BufferedUartStats {
+	/** Interrupt entries. Zero on a link that never comes up at all. */
+	std::uint32_t interrupts{0U};
+	std::uint32_t bytes_received{0U};
+	std::uint32_t bytes_sent{0U};
+	/**
+	 * Received bytes dropped because the receive ring was full.
+	 *
+	 * An overrun is silent at the wire, so a link quietly losing bytes is
+	 * invisible without this.
+	 */
+	std::uint32_t receive_overruns{0U};
+	/**
+	 * Transmit interrupts where the FIFO accepted nothing.
+	 *
+	 * A few are normal. A count that climbs while bytes stay queued means
+	 * flow control is asserted or the peer has stopped reading.
+	 */
+	std::uint32_t transmit_stalls{0U};
+	/** Most bytes ever queued at once, per direction. */
+	std::uint32_t receive_high_water{0U};
+	std::uint32_t transmit_high_water{0U};
+};
 
 /**
  * A UART with interrupt-driven receive and transmit.
@@ -94,6 +133,7 @@ class BufferedUart
 		}
 		uart_irq_rx_disable(device_);
 		uart_irq_tx_disable(device_);
+		transmitting_ = false;
 		started_ = false;
 	}
 
@@ -119,30 +159,71 @@ class BufferedUart
 	}
 
 	/**
-	 * Wait up to @p timeout for at least one byte, then take what is there.
+	 * Wait up to @p wait for at least one byte, then take what is there.
 	 *
-	 * Polls in @p poll_interval slices, because Zephyr's interrupt-driven UART
-	 * API has no completion object to wait on.
+	 * Sleeps on the interrupt rather than polling, so a byte that arrives one
+	 * microsecond after the call is delivered immediately.
+	 *
+	 * The ring is drained before each wait, which is what keeps a partial read
+	 * from blocking: the interrupt signals once for a burst, so a reader that
+	 * took half of it would otherwise wait for a signal that has already been
+	 * consumed.
 	 */
-	[[nodiscard]] std::size_t
-	read(std::span<std::byte> destination, std::chrono::milliseconds timeout,
-	     std::chrono::milliseconds poll_interval = std::chrono::milliseconds{1}) noexcept
+	template <typename Rep, typename Period>
+	[[nodiscard]] std::size_t read(std::span<std::byte> destination,
+				       std::chrono::duration<Rep, Period> wait) noexcept
 	{
-		if (poll_interval <= std::chrono::milliseconds::zero()) {
-			poll_interval = std::chrono::milliseconds{1};
-		}
-		auto remaining = timeout;
+		const auto deadline =
+			uptime() +
+			std::chrono::ceil<std::chrono::milliseconds>(
+				wait > decltype(wait)::zero() ? wait : decltype(wait)::zero());
 		while (true) {
 			if (const std::size_t taken = receive_.get(destination); taken > 0U) {
 				return taken;
 			}
+			const auto remaining = deadline - uptime();
 			if (remaining <= std::chrono::milliseconds::zero()) {
 				return 0U;
 			}
-			const auto slice = remaining < poll_interval ? remaining : poll_interval;
-			sleep_for(slice);
-			remaining -= slice;
+			(void)receive_ready_.take(remaining);
 		}
+	}
+
+	/**
+	 * Wait until at least @p bytes of transmit room are free.
+	 *
+	 * For a producer that must place a whole message or none of it: a message
+	 * split by a full ring puts a truncated header on the wire, and the peer
+	 * has to resynchronize past it — a worse failure than a cleanly dropped
+	 * message.
+	 *
+	 * The signal is cleared before each re-test, so a wakeup arriving between
+	 * the test and the wait is not lost — which would otherwise park the
+	 * producer for the whole timeout while room was in fact available.
+	 */
+	template <typename Rep, typename Period>
+	[[nodiscard]] Result<> wait_for_space(std::size_t bytes,
+					      std::chrono::duration<Rep, Period> wait) noexcept
+	{
+		if (bytes > TransmitCapacity) {
+			return fail(errors::message_size);
+		}
+		const auto deadline =
+			uptime() +
+			std::chrono::ceil<std::chrono::milliseconds>(
+				wait > decltype(wait)::zero() ? wait : decltype(wait)::zero());
+		while (transmit_.space() < bytes) {
+			transmit_room_.reset();
+			if (transmit_.space() >= bytes) {
+				return {};
+			}
+			const auto remaining = deadline - uptime();
+			if (remaining <= std::chrono::milliseconds::zero()) {
+				return fail(errors::timed_out);
+			}
+			ZEST_TRY(transmit_room_.take(remaining));
+		}
+		return {};
 	}
 
 	/**
@@ -155,8 +236,14 @@ class BufferedUart
 	[[nodiscard]] std::size_t write(std::span<const std::byte> data) noexcept
 	{
 		const std::size_t queued = transmit_.put(data);
-		if (queued > 0U && started_) {
-			uart_irq_tx_enable(device_);
+		if (queued > 0U) {
+			stats_.transmit_high_water =
+				std::max(stats_.transmit_high_water,
+					 static_cast<std::uint32_t>(transmit_.size()));
+			if (started_) {
+				transmitting_ = true;
+				uart_irq_tx_enable(device_);
+			}
 		}
 		return queued;
 	}
@@ -172,59 +259,84 @@ class BufferedUart
 	 * Reports `errors::timed_out` with part of the data queued, which is the
 	 * honest outcome — a byte already handed to the ISR cannot be recalled.
 	 */
-	[[nodiscard]] Result<>
-	write_all(std::span<const std::byte> data, std::chrono::milliseconds timeout,
-		  std::chrono::milliseconds poll_interval = std::chrono::milliseconds{1}) noexcept
+	template <typename Rep, typename Period>
+	[[nodiscard]] Result<> write_all(std::span<const std::byte> data,
+					 std::chrono::duration<Rep, Period> wait) noexcept
 	{
-		if (poll_interval <= std::chrono::milliseconds::zero()) {
-			poll_interval = std::chrono::milliseconds{1};
-		}
-		auto remaining = timeout;
+		const auto deadline =
+			uptime() +
+			std::chrono::ceil<std::chrono::milliseconds>(
+				wait > decltype(wait)::zero() ? wait : decltype(wait)::zero());
 		while (!data.empty()) {
 			const std::size_t queued = write(data);
 			data = data.subspan(queued);
 			if (data.empty()) {
 				return {};
 			}
+			const auto remaining = deadline - uptime();
 			if (remaining <= std::chrono::milliseconds::zero()) {
 				return fail(errors::timed_out);
 			}
-			const auto slice = remaining < poll_interval ? remaining : poll_interval;
-			sleep_for(slice);
-			remaining -= slice;
-		}
-		return {};
-	}
-
-	/** Wait for the transmit ring to empty. The FIFO may still hold bytes. */
-	[[nodiscard]] Result<>
-	drain(std::chrono::milliseconds timeout,
-	      std::chrono::milliseconds poll_interval = std::chrono::milliseconds{1}) noexcept
-	{
-		if (poll_interval <= std::chrono::milliseconds::zero()) {
-			poll_interval = std::chrono::milliseconds{1};
-		}
-		auto remaining = timeout;
-		while (!transmit_.empty()) {
-			if (remaining <= std::chrono::milliseconds::zero()) {
-				return fail(errors::timed_out);
-			}
-			const auto slice = remaining < poll_interval ? remaining : poll_interval;
-			sleep_for(slice);
-			remaining -= slice;
+			ZEST_TRY(wait_for_space(1U, remaining));
 		}
 		return {};
 	}
 
 	/**
-	 * Received bytes dropped because the ring was full.
+	 * Queue @p data whole, or queue none of it.
 	 *
-	 * An overrun is silent at the wire, so a link that is quietly losing bytes
-	 * is invisible without a counter. Never resets itself.
+	 * Reserves the room first, so a message never goes out truncated. The
+	 * caller still serializes its own writes: two threads reserving
+	 * concurrently can each see room that the other then takes.
 	 */
-	[[nodiscard]] std::uint32_t receive_overruns() const noexcept
+	template <typename Rep, typename Period>
+	[[nodiscard]] Result<> write_atomic(std::span<const std::byte> data,
+					    std::chrono::duration<Rep, Period> wait) noexcept
 	{
-		return overruns_;
+		if (data.empty()) {
+			return {};
+		}
+		ZEST_TRY(wait_for_space(data.size(), wait));
+		if (write(data) != data.size()) {
+			return fail(errors::no_buffer_space);
+		}
+		return {};
+	}
+
+	/** Wait for the transmit ring to empty. The FIFO may still hold bytes. */
+	template <typename Rep, typename Period>
+	[[nodiscard]] Result<> drain(std::chrono::duration<Rep, Period> wait) noexcept
+	{
+		return wait_for_space(TransmitCapacity, wait);
+	}
+
+	/** Bytes currently queued for transmission. */
+	[[nodiscard]] std::size_t pending_transmit_bytes() noexcept
+	{
+		return transmit_.size();
+	}
+
+	/**
+	 * Whether the transmit interrupt is armed to drain the ring.
+	 *
+	 * Worth reporting because the UART API offers no way to ask, and the
+	 * answer is the difference between a link that is busy and one that has
+	 * stopped for good.
+	 */
+	[[nodiscard]] bool transmitting() const noexcept
+	{
+		return transmitting_;
+	}
+
+	/** Counters the interrupt keeps. Never reset themselves. */
+	[[nodiscard]] const BufferedUartStats &stats() const noexcept
+	{
+		return stats_;
+	}
+
+	void reset_stats() noexcept
+	{
+		stats_ = BufferedUartStats{};
 	}
 
 	[[nodiscard]] constexpr const struct device *device() const noexcept
@@ -239,6 +351,7 @@ class BufferedUart
 		if (self == nullptr) {
 			return;
 		}
+		++self->stats_.interrupts;
 		/* uart_irq_update() latches the pending state for this pass; both
 		 * ready checks below are meaningless without it. */
 		while (uart_irq_update(device) != 0 && uart_irq_is_pending(device) != 0) {
@@ -265,7 +378,7 @@ class BufferedUart
 				if (dropped <= 0) {
 					return;
 				}
-				overruns_ += static_cast<std::uint32_t>(dropped);
+				stats_.receive_overruns += static_cast<std::uint32_t>(dropped);
 				continue;
 			}
 
@@ -301,7 +414,17 @@ class BufferedUart
 	const struct device *device_;
 	ByteRing<ReceiveCapacity> receive_{};
 	ByteRing<TransmitCapacity> transmit_{};
-	std::uint32_t overruns_{0U};
+	/** Signalled by the interrupt when bytes have arrived. */
+	Semaphore receive_ready_{0U, 1U};
+	/** Signalled by the interrupt when transmit room has been freed. */
+	Semaphore transmit_room_{0U, 1U};
+	BufferedUartStats stats_{};
+	/*
+	 * Whether the transmit interrupt is enabled, as this class believes.
+	 * Written from both the interrupt and the producer, and only ever read as
+	 * a hint, so it is volatile rather than atomic.
+	 */
+	volatile bool transmitting_{false};
 	bool started_{false};
 };
 

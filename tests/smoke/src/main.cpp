@@ -774,13 +774,42 @@ ZTEST(zest_smoke, test_buffered_uart_surface_compiles)
 	zassert_false(uart.started());
 	zassert_equal(uart.start().error(), zest::errors::no_device);
 	zassert_equal(uart.available(), 0U);
-	zassert_equal(uart.receive_overruns(), 0U);
+	zassert_false(uart.transmitting());
+
+	/* The counters start at zero and are all reachable. */
+	zassert_equal(uart.stats().interrupts, 0U);
+	zassert_equal(uart.stats().receive_overruns, 0U);
+	zassert_equal(uart.stats().transmit_stalls, 0U);
+	zassert_equal(uart.stats().bytes_sent, 0U);
 
 	/* Queuing without a device still buffers: the ring is the object's, and
 	 * arming the interrupt is skipped because nothing was started. */
 	constexpr std::array<std::byte, 2> data{std::byte{'h'}, std::byte{'i'}};
 	zassert_equal(uart.write(data), 2U);
+	zassert_equal(uart.pending_transmit_bytes(), 2U);
+	zassert_equal(uart.stats().transmit_high_water, 2U);
+
+	/* Room that already exists is not waited for. */
+	zassert_true(uart.wait_for_space(1U, 0ms).has_value());
+	/* Room that never comes is a timeout, and more than the ring can ever
+	 * hold is refused outright rather than waited out. */
+	zassert_equal(uart.wait_for_space(64U, 0ms).error(), zest::errors::timed_out);
+	zassert_equal(uart.wait_for_space(65U, 1s).error(), zest::errors::message_size);
 	zassert_equal(uart.drain(0ms).error(), zest::errors::timed_out);
+
+	/* A read with nothing queued waits out its deadline and reports nothing,
+	 * rather than blocking forever or claiming bytes it does not have. */
+	std::array<std::byte, 4> sink{};
+	zassert_equal(uart.read(sink), 0U);
+	zassert_equal(uart.read(sink, 2ms), 0U);
+
+	/* An atomic write that cannot be placed whole queues nothing. */
+	std::array<std::byte, 63> big{};
+	zassert_equal(uart.write_atomic(big, 0ms).error(), zest::errors::timed_out);
+	zassert_equal(uart.pending_transmit_bytes(), 2U);
+
+	uart.reset_stats();
+	zassert_equal(uart.stats().transmit_high_water, 0U);
 	uart.stop();
 }
 #endif
