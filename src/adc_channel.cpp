@@ -25,7 +25,7 @@ constexpr std::size_t kMaxBurst = 32U;
 
 } /* namespace */
 
-Result<> AdcChannel::init() const noexcept
+Result<> AdcChannelSpec::init() const noexcept
 {
 	if (!adc_is_ready_dt(&spec_)) {
 		return fail(errors::no_device);
@@ -33,11 +33,16 @@ Result<> AdcChannel::init() const noexcept
 	return check(adc_channel_setup_dt(&spec_));
 }
 
-Result<Microvolts> AdcChannel::to_microvolts(std::int32_t raw) const noexcept
+Result<Microvolts> AdcChannelSpec::to_microvolts(std::int32_t raw) const noexcept
 {
 	std::int32_t value = raw;
 	ZEST_TRY(check(adc_raw_to_microvolts_dt(&spec_, &value)));
 	return Microvolts{value};
+}
+
+Result<> AdcChannelSpec::init_sequence(adc_sequence &sequence) const noexcept
+{
+	return check(adc_sequence_init_dt(&spec_, &sequence));
 }
 
 Result<std::int32_t> AdcChannel::read_raw() const noexcept
@@ -53,22 +58,19 @@ Result<std::int32_t> AdcChannel::read_raw() const noexcept
 		std::int32_t raw = 0;
 		sequence.buffer = &raw;
 		sequence.buffer_size = sizeof(raw);
-		ZEST_TRY(check(adc_sequence_init_dt(&spec_, &sequence)));
-		ZEST_TRY(check(adc_read_dt(&spec_, &sequence)));
+		ZEST_TRY(check(adc_sequence_init_dt(&spec_.native_spec(), &sequence)));
+		ZEST_TRY(check(adc_read_dt(&spec_.native_spec(), &sequence)));
 		return raw;
 	}
 
 	std::uint16_t raw = 0;
 	sequence.buffer = &raw;
 	sequence.buffer_size = sizeof(raw);
-	ZEST_TRY(check(adc_sequence_init_dt(&spec_, &sequence)));
-	ZEST_TRY(check(adc_read_dt(&spec_, &sequence)));
+	ZEST_TRY(check(adc_sequence_init_dt(&spec_.native_spec(), &sequence)));
+	ZEST_TRY(check(adc_read_dt(&spec_.native_spec(), &sequence)));
 
 	/* A differential channel reports a signed value in the same width. */
-	if (spec_.channel_cfg.differential) {
-		return static_cast<std::int32_t>(static_cast<std::int16_t>(raw));
-	}
-	return static_cast<std::int32_t>(raw);
+	return spec_.widen(raw);
 }
 
 Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noexcept
@@ -95,15 +97,14 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 			.extra_samplings = static_cast<std::uint16_t>(samples - 1U),
 		};
 		adc_sequence sequence{};
-		if (adc_sequence_init_dt(&spec_, &sequence) == 0) {
+		if (adc_sequence_init_dt(&spec_.native_spec(), &sequence) == 0) {
 			sequence.options = &options;
 			sequence.buffer = buffer.data();
 			sequence.buffer_size = samples * sizeof(std::uint16_t);
 
-			const int status = adc_read_dt(&spec_, &sequence);
+			const int status = adc_read_dt(&spec_.native_spec(), &sequence);
 			if (status == 0) {
 				burst_ = BurstSupport::supported;
-				const bool differential = spec_.channel_cfg.differential;
 				std::int64_t total = 0;
 				for (std::size_t i = 0; i < samples; ++i) {
 					/* Sign-extend per element, exactly as the
@@ -112,11 +113,7 @@ Result<std::int32_t> AdcChannel::read_average_raw(std::size_t samples) const noe
 					 * every negative sample into a large positive
 					 * one and average to nonsense.
 					 */
-					total += differential
-							 ? static_cast<std::int32_t>(
-								   static_cast<std::int16_t>(
-									   buffer[i]))
-							 : static_cast<std::int32_t>(buffer[i]);
+					total += spec_.widen(buffer[i]);
 				}
 				return static_cast<std::int32_t>(
 					total / static_cast<std::int64_t>(samples));

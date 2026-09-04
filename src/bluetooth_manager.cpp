@@ -123,8 +123,8 @@ Result<> BluetoothManager::start_advertising(const AdvertisingOptions &options) 
 		return {};
 	}
 
-	/* Advertising intervals are in units of 0.625ms. */
-	constexpr std::uint32_t kUnitsPerMillisecond = 1600U / 1000U;
+	/* Advertising intervals are in units of 0.625ms, so milliseconds scale by
+	 * 1/0.625 — exactly 8/5, done in integers to keep the rounding visible. */
 	bt_le_adv_param params{};
 	params.id = BT_ID_DEFAULT;
 	params.sid = 0U;
@@ -134,12 +134,22 @@ Result<> BluetoothManager::start_advertising(const AdvertisingOptions &options) 
 	if (options.connectable) {
 		params.options |= BT_LE_ADV_OPT_CONN;
 	}
-	if (options.include_name) {
-		params.options |= BT_LE_ADV_OPT_USE_NAME;
-	}
-	(void)kUnitsPerMillisecond;
 
-	ZEST_TRY(check(bt_le_adv_start(&params, nullptr, 0U, nullptr, 0U)));
+	/* Zephyr removed BT_LE_ADV_OPT_USE_NAME, which used to append the device
+	 * name for the caller; the name is now just another AD structure. It has
+	 * to outlive bt_le_adv_start(), which retains the caller's buffer rather
+	 * than copying it — bt_get_name() returns storage the stack owns, so the
+	 * bt_data may point at it, but nothing on this stack frame could. */
+	const char *name = bt_get_name();
+	const std::size_t name_length = name != nullptr ? std::strlen(name) : 0U;
+	const bt_data advertisement[] = {
+		BT_DATA(BT_DATA_NAME_COMPLETE, name, static_cast<std::uint8_t>(name_length)),
+	};
+	const bool include_name = options.include_name && name_length > 0U;
+
+	ZEST_TRY(
+		check(bt_le_adv_start(&params, include_name ? advertisement : nullptr,
+				      include_name ? ARRAY_SIZE(advertisement) : 0U, nullptr, 0U)));
 	advertising_ = true;
 	set_state(State::advertising);
 	return {};

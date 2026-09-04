@@ -29,6 +29,27 @@ config ZEST_GPIO
 	  Typed polling and interrupt-driven digital inputs, and digital outputs,
 	  using logical active/inactive states.
 
+config ZEST_I2S
+	bool "I2S capture and playback"
+	depends on I2S
+	help
+	  I2S streams with the memory-slab block returned by a scope rather than by
+	  hand. i2s_read() transfers a slab block to the caller, and any path that
+	  forgets k_mem_slab_free() starves the RX queue a few blocks later — which
+	  presents as the stream stopping rather than as a leak.
+
+	  The slab itself stays the application's: its block size sets the stream's
+	  latency and its block count sets how much jitter the far side may add.
+
+config ZEST_FLASH_PARTITION
+	bool "FlashPartition"
+	depends on FLASH_MAP
+	help
+	  A self-closing handle to one fixed partition, for read-mostly assets kept
+	  outside the image — a sound bank, a lookup table, a firmware slot header.
+	  Every access is bounded against the partition size, so an out-of-range
+	  offset is an error rather than a short read the caller cannot detect.
+
 config ZEST_BUTTON
 	bool "Button"
 	depends on GPIO
@@ -220,6 +241,58 @@ config ZEST_HTTP_MAX_URL_LEN
 
 endif # ZEST_HTTP_CLIENT
 
+config ZEST_FIRMWARE_UPDATE
+	bool "FirmwareUpdate"
+	depends on MCUBOOT_IMG_MANAGER
+	help
+	  Staging an MCUboot image into the spare slot, arming the bootloader, and
+	  confirming the running image so a swapping bootloader does not revert it.
+
+	  Transport is deliberately not covered: where the bytes come from is the
+	  application's, and every source has its own authentication and retry
+	  policy. What is here is the part that is identical for all of them.
+
+	  This depends on MCUBOOT_IMG_MANAGER, which is what actually builds
+	  flash_img.c and the boot_*() calls, rather than on BOOTLOADER_MCUBOOT.
+	  The latter is about where the application image is linked, which is a
+	  property of the build and not something this code needs.
+
+config ZEST_USB_DEVICE
+	bool "UsbDevice"
+	depends on USB_DEVICE_STACK_NEXT
+	help
+	  The bring-up sequence for a usbd_context built by the USBD_*_DEFINE
+	  macros: descriptors, configuration, classes, code triple, message
+	  callback, init, and enable — in the one order that works, with the
+	  VBUS-driven enable handled where the controller reports it.
+
+config ZEST_SHELL
+	bool "Shell argument helpers"
+	depends on SHELL
+	help
+	  Bounds-checked, typed access to a shell command's (argc, argv), and
+	  Error-aware reporting. The SHELL_CMD macros stay as they are; this is the
+	  parsing and printing on either side of them.
+
+config ZEST_BYTE_RING
+	bool "ByteRing"
+	help
+	  A byte-oriented ring buffer with zero-copy claim/finish access, for the
+	  ISR and DMA paths that want to write into the buffer's own storage rather
+	  than hand over an assembled element. SpscRingBuffer remains the right
+	  choice for a stream of values.
+
+config ZEST_BUFFERED_UART
+	bool "BufferedUart"
+	depends on SERIAL
+	depends on UART_INTERRUPT_DRIVEN
+	select ZEST_BYTE_RING
+	help
+	  Interrupt-driven UART with a receive and a transmit ring. ZEST_UART is the
+	  polling API and remains the right one for a sensor that answers a command
+	  every few hundred milliseconds; this is for a link carrying a continuous
+	  stream, where polling either burns a thread or drops bytes.
+
 config ZEST_WIFI_MANAGER
 	bool "WifiManager"
 	depends on NETWORKING && NET_IPV4 && WIFI
@@ -228,13 +301,36 @@ config ZEST_WIFI_MANAGER
 	  Synchronous Wi-Fi station lifecycle wrapper that owns association retries
 	  and waits for DHCP.
 
+config ZEST_BLE
+	bool "BLE primitives"
+	depends on BT
+	depends on BT_CONN
+	help
+	  Primitives for building on Zephyr's Bluetooth LE API directly:
+	  BleConnection (an owning bt_conn reference), BleAddress, ble_connect(),
+	  and BleConnectionObserver, a role-filtered view of the connection
+	  callbacks that Zephyr otherwise broadcasts to every registration.
+
+	  These sit below the profile layer and do not own the stack, register a
+	  profile, or assume a single connection, so they compose with hand-written
+	  GATT, BAP or A2DP code rather than standing in front of it. Use them
+	  instead of ZEST_BLUETOOTH_MANAGER whenever the application holds more
+	  than one link or drives a profile itself.
+
 config ZEST_BLUETOOTH_MANAGER
 	bool "BluetoothManager"
 	depends on BT
 	depends on BT_CENTRAL || BT_PERIPHERAL
 	help
-	  BLE manager covering the Zephyr Bluetooth lifecycle, central-role
-	  connections, and peripheral advertising.
+	  A single-link BLE convenience: enable the stack, advertise, accept or
+	  make one connection, and watch its state.
+
+	  It takes the stack's connection callbacks for itself and holds exactly
+	  one bt_conn, so a second instance is inert and every operation on it
+	  reports errors::no_device. An application that holds two links, drives a
+	  profile of its own, or needs the opposite role on a second link wants
+	  ZEST_BLE's primitives instead — they neither own the callbacks nor assume
+	  a single connection.
 
 	  This depends on Bluetooth rather than selecting it: force-selecting a
 	  subsystem bypasses its own dependency checks, which turns "no controller
