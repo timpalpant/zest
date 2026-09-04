@@ -19,8 +19,8 @@
  * `continue`, a discarded settling block — starves the RX queue a few blocks
  * later, which presents as the stream simply stopping rather than as a leak.
  *
- * @ref I2sBlock makes the block's ownership a scope, and @ref I2sInput /
- * @ref I2sOutput name the state transitions.
+ * @ref zest::I2sBlock makes the block's ownership a scope, and @ref zest::I2sInput /
+ * @ref zest::I2sOutput name the state transitions.
  */
 
 #include <zest/error.hpp>

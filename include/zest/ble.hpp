@@ -14,7 +14,7 @@
  * value is in its profile — GATT, BAP, A2DP — and every profile brings its own
  * registration order, its own callback structs and its own negotiated
  * parameters, so there is no single class that covers Bluetooth the way
- * @ref WifiManager covers a station. What generalizes is the plumbing every
+ * @ref zest::WifiManager covers a station. What generalizes is the plumbing every
  * profile has to get right first: reference counting a `bt_conn` across
  * callbacks, telling one link's events from another's, and reading a peer
  * address without hand-sizing a buffer.

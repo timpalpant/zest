@@ -16,7 +16,7 @@
  * `strtol` with range checks for each numeric argument, an if-chain to turn a
  * word into an enum, and an ad-hoc line to print a `Result`'s error.
  *
- * That is what this covers. @ref ShellArgs wraps `(argc, argv)` in something
+ * That is what this covers. @ref zest::ShellArgs wraps `(argc, argv)` in something
  * range-checked and typed, so a missing or malformed argument is one `if`
  * instead of five lines that are subtly different in every command.
  */
