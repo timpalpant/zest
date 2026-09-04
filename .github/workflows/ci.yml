@@ -59,7 +59,11 @@ jobs:
           cd zephyr-workspace
           # Trim the module set to what native_sim needs. nrf_hw_models depends
           # on hal_nordic, which the filter removes, so drop it too.
-          west config manifest.group-filter -- -hal,-debug,-tools,-bootloader,-babblesim
+          #
+          # The bootloader group stays: FirmwareUpdate builds against Zephyr's
+          # MCUboot DFU glue, which includes bootutil headers from the mcuboot
+          # module. Without it the firmware_update configuration cannot compile.
+          west config manifest.group-filter -- -hal,-debug,-tools,-babblesim
           west update --narrow -o=--depth=1
           rm -rf modules/bsim_hw_models
           west zephyr-export
