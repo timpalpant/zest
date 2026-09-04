@@ -19,11 +19,109 @@ namespace zest
 {
 
 /**
- * A devicetree-configured ADC channel.
+ * What an ADC channel *is*, separate from reading it.
+ *
+ * Zephyr's ADC API is one-shot — `adc_read()` converts a sequence and stops —
+ * so anything that needs a continuous or hardware-triggered stream has to drive
+ * the converter itself: a timer or DMA engine builds its own `adc_sequence`, or
+ * takes the peripheral over entirely. Such an engine still wants everything
+ * *except* the reading: the device and channel id to program, the resolution to
+ * size a buffer, the differential flag to sign-extend by, and the reference and
+ * gain to convert a raw count to a voltage.
+ *
+ * Folding those into @ref AdcChannel made them reachable only through a class
+ * whose whole purpose is the one-shot read, which left an acquisition engine
+ * either holding an `AdcChannel` it never reads from or copying the conversion
+ * arithmetic. This is that half on its own; @ref AdcChannel is this plus the
+ * one-shot path.
+ */
+class AdcChannelSpec
+{
+      public:
+	constexpr explicit AdcChannelSpec(adc_dt_spec spec) noexcept : spec_{spec}
+	{
+	}
+
+	/** Configure the underlying ADC channel. */
+	[[nodiscard]] Result<> init() const noexcept;
+
+	/**
+	 * Convert a raw count to the input voltage.
+	 *
+	 * Applies the channel's reference and gain, so an engine that collected
+	 * its own samples converts them exactly as @ref AdcChannel would.
+	 */
+	[[nodiscard]] Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
+
+	/**
+	 * Widen one narrow sample to a signed value.
+	 *
+	 * A differential channel reports a signed value in the sample width, so a
+	 * buffer filled by DMA has to be sign-extended per element before it is
+	 * summed or averaged — treating a differential burst as unsigned turns
+	 * every negative sample into a large positive one.
+	 */
+	[[nodiscard]] constexpr std::int32_t widen(std::uint16_t raw) const noexcept
+	{
+		return spec_.channel_cfg.differential
+			       ? static_cast<std::int32_t>(static_cast<std::int16_t>(raw))
+			       : static_cast<std::int32_t>(raw);
+	}
+
+	/**
+	 * Prepare a caller-owned sequence for this channel.
+	 *
+	 * The buffer is left for the caller to set, which is the point: an engine
+	 * that samples on a hardware trigger supplies its own storage and its own
+	 * `adc_sequence_options`.
+	 */
+	[[nodiscard]] Result<> init_sequence(adc_sequence &sequence) const noexcept;
+
+	/** The channel's configured resolution in bits. */
+	[[nodiscard]] constexpr std::uint8_t resolution() const noexcept
+	{
+		return spec_.resolution;
+	}
+
+	/** Whether samples are wider than 16 bits and so need 32-bit storage. */
+	[[nodiscard]] constexpr bool wide_samples() const noexcept
+	{
+		return spec_.resolution > 16U;
+	}
+
+	[[nodiscard]] constexpr bool differential() const noexcept
+	{
+		return spec_.channel_cfg.differential;
+	}
+
+	[[nodiscard]] constexpr const struct device *device() const noexcept
+	{
+		return spec_.dev;
+	}
+
+	[[nodiscard]] constexpr std::uint8_t channel_id() const noexcept
+	{
+		return spec_.channel_id;
+	}
+
+	[[nodiscard]] constexpr const adc_dt_spec &native_spec() const noexcept
+	{
+		return spec_;
+	}
+
+      private:
+	adc_dt_spec spec_;
+};
+
+/**
+ * A devicetree-configured ADC channel, read one conversion at a time.
  *
  * Sample width follows the channel's configured resolution, so 18- and 24-bit
  * parts read correctly and an unsigned 16-bit value above `0x7FFF` does not come
  * back negative.
+ *
+ * This is @ref AdcChannelSpec plus the one-shot read. Code that drives the
+ * converter itself wants the spec alone — reach it with @ref AdcChannel::spec.
  */
 class AdcChannel
 {
@@ -32,8 +130,21 @@ class AdcChannel
 	{
 	}
 
+	constexpr explicit AdcChannel(AdcChannelSpec spec) noexcept : spec_{spec}
+	{
+	}
+
+	/** What this channel is, without the reading. */
+	[[nodiscard]] constexpr const AdcChannelSpec &spec() const noexcept
+	{
+		return spec_;
+	}
+
 	/** Configure the underlying ADC channel. */
-	[[nodiscard]] Result<> init() const noexcept;
+	[[nodiscard]] Result<> init() const noexcept
+	{
+		return spec_.init();
+	}
 
 	/** Perform one conversion and return its raw sample value. */
 	[[nodiscard]] Result<std::int32_t> read_raw() const noexcept;
@@ -79,24 +190,27 @@ class AdcChannel
 	/** The channel's configured resolution in bits. */
 	[[nodiscard]] constexpr std::uint8_t resolution() const noexcept
 	{
-		return spec_.resolution;
+		return spec_.resolution();
 	}
 
 	/** Whether samples are wider than 16 bits and so need 32-bit storage. */
 	[[nodiscard]] constexpr bool wide_samples() const noexcept
 	{
-		return spec_.resolution > 16U;
+		return spec_.wide_samples();
 	}
 
 	[[nodiscard]] constexpr const adc_dt_spec &native_spec() const noexcept
 	{
-		return spec_;
+		return spec_.native_spec();
+	}
+
+	/** Convert a raw reading to microvolts using the channel's reference. */
+	[[nodiscard]] Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept
+	{
+		return spec_.to_microvolts(raw);
 	}
 
       private:
-	/** Convert a raw reading to microvolts using the channel's reference. */
-	[[nodiscard]] Result<Microvolts> to_microvolts(std::int32_t raw) const noexcept;
-
 	/**
 	 * Mean of @p samples raw conversions, burst where the driver allows it.
 	 *
@@ -119,7 +233,7 @@ class AdcChannel
 		unsupported,
 	};
 
-	adc_dt_spec spec_;
+	AdcChannelSpec spec_;
 
 	/*
 	 * Mutable because reading is const and this is a cache of what the driver

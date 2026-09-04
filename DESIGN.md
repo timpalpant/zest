@@ -336,11 +336,86 @@ credential that arrives at run time.
 
 ## 14. Bluetooth
 
-`BluetoothManager` covers both roles: central-role `connect()` takes a BLE
-identity address, and peripheral-role `start_advertising()` serves the archetypal
-sensor node — advertise, accept a connection, expose a characteristic.
+Bluetooth does not compress the way Wi-Fi does. `WifiManager` is thin because a
+station has one operation shape — associate, take a lease, carry IP — and a
+clean seam above it: everything after association talks sockets and never names
+the manager again. Bluetooth has no such seam, because the connection is not the
+product. Getting to `connected` is a small fraction of the work, and the value
+is entirely in the profile above it — GATT, A2DP, BAP — each with its own
+registration order, its own callback structs and its own negotiated parameters.
+Zephyr's API is already that abstraction; a C++ class in front of it would have
+to be one class per profile, and would take the global connection callbacks away
+from the profile code that needs them.
 
-## 15. Thread safety
+So this splits in two.
+
+`zest/ble.hpp` is the layer that does generalize: the plumbing every profile has
+to get right before it can start. `BleConnection` is an owning `bt_conn`
+reference, because reference counting across callbacks is the single easiest
+thing to get wrong and a missed `bt_conn_unref()` surfaces much later as an
+unexplained `-ENOMEM` from an unrelated connect or advertiser start.
+`BleConnectionObserver` narrows the connection callbacks to one role, because
+Zephyr broadcasts every callback to every registration and an application
+holding two links otherwise sees both links' events in both handlers.
+`BleAddress` carries the `char[BT_ADDR_LE_STR_LEN]` that every callback
+otherwise declares by hand. None of these owns the stack or assumes a single
+connection, so they compose with hand-written profile code.
+
+`BluetoothManager` is the narrow convenience above that, and only covers one
+shape: a single-link BLE device that advertises, accepts a connection and
+exposes a characteristic. It takes the connection callbacks for itself and holds
+one `bt_conn`, so an application with two links, an opposite-role second link,
+or a profile of its own wants the primitives instead.
+
+## 15. Driving hardware Zephyr's API only half-covers
+
+Three of Zephyr's driver APIs stop short of what an application that actually
+uses the peripheral needs, in the same way and for the same reason: they were
+designed around the simple case and the hard case has to reach past them.
+
+`AdcChannel` was the clearest. Zephyr's ADC API is one-shot — `adc_read()`
+converts a sequence and stops — so anything wanting a continuous or
+hardware-triggered stream drives the converter itself. Such an engine still
+needs the channel's device, id, resolution, differential flag, reference and
+gain; it just never wants the read. Folding all of that into the class whose
+purpose *is* the read left an acquisition engine holding an `AdcChannel` it
+never called, or copying the conversion arithmetic. `AdcChannelSpec` is that
+half on its own, and `AdcChannel` is now it plus the one-shot path.
+
+I2S is the opposite problem: the API is complete, and two of its contracts are
+carried only in prose. `i2s_read()` transfers a memory-slab block to the caller,
+and `i2s_write()` takes one — including when it fails. A path that forgets a
+`k_mem_slab_free()` starves the queue several blocks later, which presents as
+the stream stopping rather than as a leak, and one that frees after a failed
+write corrupts the slab. `I2sBlock` makes the receive side a scope;
+`I2sOutput::write()` allocates, copies and submits so the transmit side has no
+free to get wrong.
+
+`Uart` is the polling API and stays that way — it is right for a sensor that
+answers a command every few hundred milliseconds, and it needs no interrupt
+configuration or buffer sizing. A link carrying a continuous stream cannot use
+it at all, so `BufferedUart` is the interrupt shape, built on `ByteRing`.
+`ByteRing` exists because `SpscRingBuffer` is typed on the element: hardware
+wants to write *into the buffer's storage* and then say how much it managed,
+which is a claim/finish operation, not a `try_push`.
+
+## 16. Firmware updates
+
+`FirmwareUpdate` covers staging an MCUboot image and confirming it, and says
+nothing about where the bytes come from. Transport is the application's — an
+HTTP range request, an MQTT topic, a serial link — and each has its own
+authentication, framing and retry policy; what follows the transport is
+identical for all of them.
+
+The step worth naming is the confirmation. Under a swapping bootloader mode a
+freshly installed image runs on trial, and unless it confirms itself the
+bootloader restores the previous one on the next reset. That is what makes an
+unattended device safe to update, and it is lost silently: the update appears to
+work, and then a device that rebooted for an unrelated reason comes back on the
+old firmware. `confirm_running_image()` belongs where the new build has proved
+something end to end, not at the top of `main()`.
+
+## 17. Thread safety
 
 | Category | Contract |
 | --- | --- |
@@ -350,10 +425,15 @@ sensor node — advertise, accept a connection, expose a characteristic.
 | `WorkItem`, `DelayableWorkItem` | `submit()`/`schedule()` are ISR-safe. Replacing a handler must not race a pending run. |
 | Hardware handles (`AdcChannel`, `GpioOutput`, `PwmOutput`) | One owner per peripheral. |
 | `WifiManager`, `BluetoothManager` | Lifecycle operations are serialized internally. One instance per interface or stack; a second is inert and reports `errors::no_device`. |
+| `BleConnection` | Not synchronized, like any other handle. Callbacks run on the Bluetooth RX thread while application code waits on another, so assign and reset a shared one from a single context. |
+| `BleConnectionObserver` | Registration and dispatch are serialized. Handlers run on the Bluetooth RX thread and must not block; install them before `start()`. |
 | `HttpClient`, `MqttClient`, sockets | One owner. Not safe to use from two threads at once. |
 | `Button`, `LedPatternPlayer` | Poll from one context. |
+| `I2sBlock`, `FlashPartition`, `FirmwareUpdate::Writer` | Move-only handles with one owner. |
+| `ByteRing` | One producer and one consumer, concurrently — an ISR and a thread. A claim and its finish are one operation on one side. |
+| `BufferedUart` | The ISR is the producer on receive and the consumer on transmit; application calls are the other side of each. |
 
-## 16. Testing
+## 18. Testing
 
 Two layers, deliberately separated:
 
@@ -372,7 +452,7 @@ building them.
 actually took effect. An option that silently resolves to `n` is a test that
 passes while covering nothing.
 
-## 17. Buses
+## 19. Buses
 
 `I2cDevice`, `SpiDevice` and `Uart` cover the part that has no Zephyr driver,
 which every sensing project eventually has. They follow the library's conventions
@@ -385,7 +465,7 @@ no interrupt configuration, no ring buffer sizing, nothing beyond
 `CONFIG_SERIAL`. Its reads take a timeout, so they cannot hang a thread the way a
 raw `uart_poll_in()` loop does.
 
-## 18. Serialization
+## 20. Serialization
 
 `zest/schema.hpp` declares a struct's shape once; `zest/json.hpp` and
 `zest/cbor.hpp` are codecs over it, and `zest/serde.hpp` makes the format a

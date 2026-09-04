@@ -73,8 +73,20 @@ class BluetoothManager
 	[[nodiscard]] Result<> enable(std::string_view device_name = {}) noexcept;
 	[[nodiscard]] Result<> disable() noexcept;
 
-	/** Begin advertising in the peripheral role. */
-	[[nodiscard]] Result<> start_advertising(const AdvertisingOptions &options = {}) noexcept;
+	/**
+	 * Begin advertising in the peripheral role.
+	 *
+	 * Declared as an overload rather than with an `= {}` default argument:
+	 * a default argument is parsed in the complete-class context of the
+	 * *enclosing* class, at which point AdvertisingOptions' own default member
+	 * initializers have not been seen yet, and the aggregate initialization is
+	 * rejected.
+	 */
+	[[nodiscard]] Result<> start_advertising(const AdvertisingOptions &options) noexcept;
+	[[nodiscard]] Result<> start_advertising() noexcept
+	{
+		return start_advertising(AdvertisingOptions{});
+	}
 	[[nodiscard]] Result<> stop_advertising() noexcept;
 
 	[[nodiscard]] Result<> connect(const Peer &peer,

@@ -15,6 +15,10 @@
 
 #include <zephyr/ztest.h>
 
+#if defined(CONFIG_ZEST_FLASH_PARTITION)
+#include <zephyr/storage/flash_map.h>
+#endif
+
 #include <zest/version.hpp>
 
 /* Always available. */
@@ -88,6 +92,30 @@
 #if defined(CONFIG_ZEST_WIFI_MANAGER)
 #include <zest/wifi_manager.hpp>
 #endif
+#if defined(CONFIG_ZEST_BYTE_RING)
+#include <zest/byte_ring.hpp>
+#endif
+#if defined(CONFIG_ZEST_BUFFERED_UART)
+#include <zest/buffered_uart.hpp>
+#endif
+#if defined(CONFIG_ZEST_I2S)
+#include <zest/i2s.hpp>
+#endif
+#if defined(CONFIG_ZEST_FLASH_PARTITION)
+#include <zest/flash_partition.hpp>
+#endif
+#if defined(CONFIG_ZEST_FIRMWARE_UPDATE)
+#include <zest/firmware_update.hpp>
+#endif
+#if defined(CONFIG_ZEST_USB_DEVICE)
+#include <zest/usb_device.hpp>
+#endif
+#if defined(CONFIG_ZEST_SHELL)
+#include <zest/shell.hpp>
+#endif
+#if defined(CONFIG_ZEST_BLE)
+#include <zest/ble.hpp>
+#endif
 #if defined(CONFIG_ZEST_BLUETOOTH_MANAGER)
 #include <zest/bluetooth_manager.hpp>
 #endif
@@ -97,6 +125,8 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
+#include <cstring>
 #include <span>
 #include <string_view>
 #include <type_traits>
@@ -191,6 +221,42 @@ ZTEST(zest_smoke, test_semaphore)
 	zassert_equal(semaphore.count(), 1U);
 	zassert_true(semaphore.take(10ms).has_value());
 	zassert_false(semaphore.take(1ms).has_value());
+}
+
+ZTEST(zest_smoke, test_semaphore_take_unless_abandons_before_the_deadline)
+{
+	zest::Semaphore semaphore{0U, 1U};
+
+	/* An already-abandoned wait returns without touching the semaphore. */
+	semaphore.give();
+	zassert_equal(semaphore.take_unless(1s, []() noexcept { return true; }).error(),
+		      zest::errors::interrupted);
+	zassert_equal(semaphore.count(), 1U);
+	zassert_true(semaphore.take_unless(1s, []() noexcept { return false; }).has_value());
+
+	/* The whole point: a wait whose outcome has already been decided ends about
+	 * one poll interval later, not at the deadline. */
+	int polls = 0;
+	const auto started = zest::uptime();
+	const auto result = semaphore.take_unless(
+		std::chrono::seconds{30}, [&polls]() noexcept { return ++polls > 3; }, 10ms);
+	const auto elapsed = zest::uptime() - started;
+	zassert_equal(result.error(), zest::errors::interrupted);
+	zassert_true(elapsed < 1s, "abandoned wait ran %lld ms",
+		     static_cast<long long>(elapsed.count()));
+
+	/* A wait nothing abandons still reports the timeout, not the abandon. */
+	zassert_equal(semaphore.take_unless(
+				       30ms, []() noexcept { return false; }, 10ms)
+			      .error(),
+		      zest::errors::timed_out);
+
+	/* A non-positive wait is one non-blocking attempt, and still succeeds when
+	 * the semaphore is already available. */
+	zassert_equal(semaphore.take_unless(0ms, []() noexcept { return false; }).error(),
+		      zest::errors::timed_out);
+	semaphore.give();
+	zassert_true(semaphore.take_unless(0ms, []() noexcept { return false; }).has_value());
 }
 
 ZTEST(zest_smoke, test_work_item_runs_a_capturing_lambda)
@@ -656,6 +722,361 @@ ZTEST(zest_smoke, test_wifi_surface)
 	zassert_equal(wifi.connect({.ssid = ""}).error(), zest::errors::invalid_argument);
 	zassert_true(std::string_view{zest::to_string(wifi.state())}.size() > 0U);
 	zassert_true(std::string_view{zest::to_string(zest::WifiSecurity::wpa3_sae)}.size() > 0U);
+}
+#endif
+
+#if defined(CONFIG_ZEST_BYTE_RING)
+ZTEST(zest_smoke, test_byte_ring_claim_and_finish)
+{
+	zest::ByteRing<8U> ring;
+	zassert_equal(ring.capacity(), 8U);
+	zassert_true(ring.empty());
+	zassert_equal(ring.space(), 8U);
+
+	constexpr std::array<std::byte, 3> data{std::byte{1}, std::byte{2}, std::byte{3}};
+	zassert_equal(ring.put(data), 3U);
+	zassert_equal(ring.size(), 3U);
+
+	/* A claim is not published until it is finished, so the consumer still
+	 * sees only what was committed. */
+	auto claim = ring.claim_put(4U);
+	zassert_true(claim.size() >= 1U);
+	claim[0] = std::byte{9};
+	zassert_equal(ring.size(), 3U);
+	zassert_true(ring.finish_put(1U).has_value());
+	zassert_equal(ring.size(), 4U);
+
+	std::array<std::byte, 4> out{};
+	zassert_equal(ring.get(out), 4U);
+	zassert_equal(std::to_integer<int>(out[0]), 1);
+	zassert_equal(std::to_integer<int>(out[3]), 9);
+	zassert_true(ring.empty());
+
+	/* Finishing zero puts the whole claim back — the shape a transmit ISR
+	 * needs when the hardware FIFO accepted nothing. */
+	zassert_equal(ring.put(data), 3U);
+	auto peek = ring.claim_get(3U);
+	zassert_equal(peek.size(), 3U);
+	zassert_true(ring.finish_get(0U).has_value());
+	zassert_equal(ring.size(), 3U);
+
+	/* A full ring accepts nothing rather than overwriting. */
+	std::array<std::byte, 16> flood{};
+	zassert_equal(ring.put(flood), 5U);
+	zassert_equal(ring.put(flood), 0U);
+}
+#endif
+
+#if defined(CONFIG_ZEST_BUFFERED_UART)
+ZTEST(zest_smoke, test_buffered_uart_surface_compiles)
+{
+	zest::BufferedUart<64U, 64U> uart{nullptr};
+	zassert_false(uart.started());
+	zassert_equal(uart.start().error(), zest::errors::no_device);
+	zassert_equal(uart.available(), 0U);
+	zassert_false(uart.transmitting());
+
+	/* The counters start at zero and are all reachable. */
+	zassert_equal(uart.stats().interrupts, 0U);
+	zassert_equal(uart.stats().receive_overruns, 0U);
+	zassert_equal(uart.stats().transmit_stalls, 0U);
+	zassert_equal(uart.stats().transmit_ready, 0U);
+	zassert_equal(uart.stats().bytes_sent, 0U);
+
+	/* Queuing without a device still buffers: the ring is the object's, and
+	 * arming the interrupt is skipped because nothing was started. */
+	constexpr std::array<std::byte, 2> data{std::byte{'h'}, std::byte{'i'}};
+	zassert_equal(uart.write(data), 2U);
+	zassert_equal(uart.pending_transmit_bytes(), 2U);
+	zassert_equal(uart.stats().transmit_high_water, 2U);
+
+	/* Room that already exists is not waited for. */
+	zassert_true(uart.wait_for_space(1U, 0ms).has_value());
+	/* Room that never comes is a timeout, and more than the ring can ever
+	 * hold is refused outright rather than waited out. */
+	zassert_equal(uart.wait_for_space(64U, 0ms).error(), zest::errors::timed_out);
+	zassert_equal(uart.wait_for_space(65U, 1s).error(), zest::errors::message_size);
+	zassert_equal(uart.drain(0ms).error(), zest::errors::timed_out);
+
+	/* A read with nothing queued waits out its deadline and reports nothing,
+	 * rather than blocking forever or claiming bytes it does not have. */
+	std::array<std::byte, 4> sink{};
+	zassert_equal(uart.read(sink), 0U);
+	zassert_equal(uart.read(sink, 2ms), 0U);
+
+	/* An atomic write that cannot be placed whole queues nothing. */
+	std::array<std::byte, 63> big{};
+	zassert_equal(uart.write_atomic(big, 0ms).error(), zest::errors::timed_out);
+	zassert_equal(uart.pending_transmit_bytes(), 2U);
+
+	uart.reset_stats();
+	zassert_equal(uart.stats().transmit_high_water, 0U);
+	uart.stop();
+}
+#endif
+
+#if defined(CONFIG_ZEST_I2S)
+/* K_MEM_SLAB_DEFINE places its storage in a section, so it cannot be a local. */
+K_MEM_SLAB_DEFINE(i2s_test_slab, 32U, 2U, 4U);
+
+ZTEST(zest_smoke, test_i2s_block_returns_itself_to_the_slab)
+{
+	auto &slab = i2s_test_slab;
+
+	void *first = nullptr;
+	zassert_equal(k_mem_slab_alloc(&slab, &first, K_NO_WAIT), 0);
+	zassert_equal(k_mem_slab_num_free_get(&slab), 1U);
+
+	{
+		const zest::I2sBlock block{&slab, first, 32U};
+		zassert_true(static_cast<bool>(block));
+		zassert_equal(block.size_bytes(), 32U);
+		zassert_equal(block.bytes().size(), 32U);
+		zassert_equal(block.samples<std::int16_t>().size(), 16U);
+		/* A width that does not divide the block yields no samples rather
+		 * than a misaligned reinterpretation of the tail. */
+		struct Odd {
+			std::byte data[5];
+		};
+		zassert_equal(block.samples<Odd>().size(), 0U);
+	}
+	zassert_equal(k_mem_slab_num_free_get(&slab), 2U, "scope exit must free the block");
+
+	/* Moving transfers the block, so it is freed exactly once. */
+	void *second = nullptr;
+	zassert_equal(k_mem_slab_alloc(&slab, &second, K_NO_WAIT), 0);
+	{
+		zest::I2sBlock source{&slab, second, 32U};
+		zest::I2sBlock moved = std::move(source);
+		zassert_false(static_cast<bool>(source));
+		zassert_true(static_cast<bool>(moved));
+	}
+	zassert_equal(k_mem_slab_num_free_get(&slab), 2U);
+
+	const zest::I2sInput input{nullptr};
+	zassert_equal(input.init().error(), zest::errors::no_device);
+	zassert_equal(input.direction(), zest::I2sDirection::receive);
+	const zest::I2sOutput output{nullptr};
+	zassert_equal(output.direction(), zest::I2sDirection::transmit);
+	zassert_equal(output.block_size(), 0U);
+}
+#endif
+
+#if defined(CONFIG_ZEST_FLASH_PARTITION)
+ZTEST(zest_smoke, test_flash_partition_bounds_every_access)
+{
+	zest::FlashPartition partition{FIXED_PARTITION_ID(storage_partition)};
+	zassert_false(partition.is_open());
+
+	/* Every accessor reports the closed handle rather than dereferencing. */
+	zassert_equal(partition.size().error(), zest::errors::bad_descriptor);
+	std::array<std::byte, 4> buffer{};
+	zassert_equal(partition.read(0U, buffer).error(), zest::errors::bad_descriptor);
+
+	zassert_true(partition.open().has_value());
+	zassert_true(partition.is_open());
+	/* Opening twice is a no-op, not a second area that leaks. */
+	zassert_true(partition.open().has_value());
+
+	const auto size = partition.size();
+	zassert_true(size.has_value());
+	zassert_true(*size > 0U);
+	zassert_true(partition.read(0U, buffer).has_value());
+
+	/* A read that would run off the end is refused, not truncated. */
+	zassert_equal(partition.read(*size, buffer).error(), zest::errors::out_of_range);
+	zassert_equal(partition.read(*size - 1U, buffer).error(), zest::errors::out_of_range);
+	/* And the offset+length test does not wrap. */
+	zassert_equal(
+		partition.read(4U, std::span<std::byte>{buffer.data(), SIZE_MAX - 2U}).error(),
+		zest::errors::out_of_range);
+
+	partition.close();
+	zassert_false(partition.is_open());
+	partition.close();
+}
+#endif
+
+#if defined(CONFIG_ZEST_FIRMWARE_UPDATE)
+ZTEST(zest_smoke, test_image_version_orders_by_field)
+{
+	constexpr zest::ImageVersion older{.major = 1U, .minor = 2U, .revision = 3U, .build = 4U};
+	constexpr zest::ImageVersion newer{.major = 1U, .minor = 2U, .revision = 3U, .build = 5U};
+	static_assert(older < newer);
+	static_assert(zest::ImageVersion{.major = 1U} < zest::ImageVersion{.major = 2U});
+	static_assert(zest::ImageVersion{.major = 2U} >
+		      zest::ImageVersion{.major = 1U, .minor = 99U, .build = 99U});
+	static_assert(older == older);
+
+	std::array<char, 24> text{};
+	const auto formatted = older.format(text);
+	zassert_true(formatted.has_value());
+	zassert_equal(*formatted, std::string_view{"1.2.3+4"});
+
+	/* Truncation is an error rather than a prefix that compares equal to
+	 * some other version. */
+	std::array<char, 4> tiny{};
+	zassert_equal(older.format(tiny).error(), zest::errors::no_buffer_space);
+
+	/* A writer refuses to take data before it has claimed the slot. */
+	zest::FirmwareUpdate::Writer writer;
+	zassert_false(writer.begun());
+	zassert_equal(writer.written(), 0U);
+	constexpr std::array<std::byte, 1> byte{std::byte{0}};
+	zassert_equal(writer.write(byte).error(), zest::errors::bad_descriptor);
+}
+#endif
+
+#if defined(CONFIG_ZEST_USB_DEVICE)
+ZTEST(zest_smoke, test_usb_device_surface_compiles)
+{
+	zest::UsbDevice device{nullptr};
+	zassert_false(device.enabled());
+	zassert_false(device.can_detect_vbus());
+	zassert_equal(device.enable().error(), zest::errors::no_device);
+	zassert_equal(device.disable().error(), zest::errors::no_device);
+
+	constexpr auto triple = zest::UsbCodeTriple::interface_association();
+	static_assert(triple.subclass == 0x02U);
+	static_assert(triple.protocol == 0x01U);
+}
+#endif
+
+#if defined(CONFIG_ZEST_SHELL)
+ZTEST(zest_smoke, test_shell_args_are_bounds_checked_and_typed)
+{
+	char command[] = "set-band";
+	char index[] = "2";
+	char gain[] = "-6";
+	char trailing[] = "2x";
+	char *argv[] = {command, index, gain, trailing};
+	const zest::ShellArgs args{4U, argv};
+
+	zassert_equal(args.size(), 4U);
+	zassert_equal(args.count(), 3U);
+	zassert_equal(args[0], std::string_view{"set-band"});
+	zassert_true(args.has(3U));
+	zassert_false(args.has(4U));
+
+	/* A missing argument is an error, not a read past the end. */
+	zassert_equal(args[9U], std::string_view{});
+	zassert_equal(args.text(9U).error(), zest::errors::invalid_argument);
+	zassert_equal(args.text_or(9U, "both"), std::string_view{"both"});
+
+	zassert_equal(args.integer<int>(1U).value(), 2);
+	zassert_equal(args.integer<int>(2U).value(), -6);
+	/* Out of range is distinguishable from malformed. */
+	zassert_equal(args.integer<int>(1U, 0, 1).error(), zest::errors::out_of_range);
+	/* Trailing rubbish is rejected rather than silently parsed as a prefix. */
+	zassert_equal(args.integer<int>(3U).error(), zest::errors::invalid_argument);
+
+	enum class Ear : std::uint8_t {
+		left,
+		right,
+		both
+	};
+	static constexpr std::array kEars{
+		zest::ShellKeyword<Ear>{"left", Ear::left},
+		zest::ShellKeyword<Ear>{"right", Ear::right},
+	};
+	char left[] = "left";
+	char *ear_argv[] = {command, left};
+	const zest::ShellArgs ear_args{2U, ear_argv};
+	zassert_equal(ear_args.keyword<Ear>(1U, kEars).value(), Ear::left);
+	/* An unknown word is not the same as a missing one. */
+	zassert_equal(args.keyword<Ear>(1U, kEars).error(), zest::errors::not_found);
+	zassert_equal(args.keyword<Ear>(9U, kEars).error(), zest::errors::invalid_argument);
+
+	/* Reporting never dereferences a null shell. */
+	zest::shell_report(nullptr, zest::errors::io_error, "test");
+	zassert_equal(zest::shell_finish(nullptr, zest::Result<int>{1}), 0);
+}
+#endif
+
+#if defined(CONFIG_ZEST_BLE)
+ZTEST(zest_smoke, test_ble_connection_is_an_empty_owning_handle)
+{
+	static_assert(std::is_nothrow_default_constructible_v<zest::BleConnection>);
+	static_assert(std::is_nothrow_move_constructible_v<zest::BleConnection>);
+	static_assert(!std::is_copy_constructible_v<zest::BleConnection>);
+	static_assert(!std::is_copy_assignable_v<zest::BleConnection>);
+
+	zest::BleConnection connection;
+	zassert_false(static_cast<bool>(connection));
+	zassert_is_null(connection.get());
+	/* An empty slot matches neither a real connection nor another empty one,
+	 * so a broadcast callback for some other link never routes to it. */
+	zassert_false(connection.holds(nullptr));
+
+	/* Every operation on an empty handle reports it rather than dereferencing. */
+	zassert_equal(connection.info().error(), zest::errors::not_connected);
+	zassert_equal(connection.role().error(), zest::errors::not_connected);
+	zassert_equal(connection.disconnect().error(), zest::errors::not_connected);
+	zassert_equal(connection.set_security(BT_SECURITY_L2).error(), zest::errors::not_connected);
+
+	/* retain(nullptr) is empty rather than a null reference to unref later. */
+	auto retained = zest::BleConnection::retain(nullptr);
+	zassert_false(static_cast<bool>(retained));
+
+	/* Moving transfers the reference and leaves the source empty, so the
+	 * count is never released twice. */
+	auto moved = std::move(connection);
+	zassert_is_null(moved.get());
+	zassert_is_null(connection.get());
+	zassert_is_null(moved.release());
+	moved.reset();
+	moved.reset();
+}
+
+ZTEST(zest_smoke, test_ble_address_formats_without_a_caller_buffer)
+{
+	const zest::BleAddress none;
+	zassert_str_equal(none.c_str(), "(none)");
+	zassert_equal(none.view().size(), std::strlen("(none)"));
+
+	const bt_addr_le_t peer = {
+		.type = BT_ADDR_LE_RANDOM,
+		.a = {.val = {0x66, 0x55, 0x44, 0x33, 0x22, 0xC1}},
+	};
+	const zest::BleAddress address{&peer};
+	/* bt_addr_le_to_str() prints the octets most-significant first. */
+	zassert_true(address.view().starts_with("C1:22:33:44:55:66"));
+	zassert_equal(address.view().size(), std::strlen(address.c_str()));
+
+	/* A null connection has no address rather than an undefined one. */
+	zassert_str_equal(zest::BleAddress{static_cast<const bt_conn *>(nullptr)}.c_str(),
+			  "(none)");
+}
+
+ZTEST(zest_smoke, test_ble_connection_observer_registration_is_scoped)
+{
+	zest::BleConnectionObserver central{zest::BleRole::central};
+	zassert_false(central.started());
+
+	/* Handlers install before start(), because after it a callback can arrive
+	 * on the Bluetooth RX thread at any time. */
+	int connected_calls = 0;
+	central.on_connected(
+		[&connected_calls](bt_conn *, std::uint8_t) noexcept { ++connected_calls; });
+
+	zassert_true(central.start().has_value());
+	zassert_true(central.started());
+	/* Starting twice is a caller error, not a second registration. */
+	zassert_equal(central.start().error(), zest::errors::already);
+
+	/* A second observer on the other role coexists: the two links are told
+	 * apart by role, which the singleton BluetoothManager cannot do. */
+	zest::BleConnectionObserver peripheral{zest::BleRole::peripheral};
+	zassert_true(peripheral.start().has_value());
+
+	zassert_true(central.stop().has_value());
+	zassert_false(central.started());
+	/* Stopping is idempotent, so the destructor can always call it. */
+	zassert_true(central.stop().has_value());
+	zassert_equal(connected_calls, 0);
+
+	zassert_true(std::string_view{zest::to_string(zest::BleRole::central)}.size() > 0U);
+	zassert_true(std::string_view{zest::to_string(zest::BleRole::peripheral)}.size() > 0U);
 }
 #endif
 

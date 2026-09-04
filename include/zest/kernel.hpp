@@ -233,6 +233,66 @@ class Semaphore
 		return k_sem_take(&semaphore_, K_NO_WAIT) == 0;
 	}
 
+	/**
+	 * Wait for the semaphore, giving up early once @p abandon returns true.
+	 *
+	 * A plain `take()` commits to its full timeout even after the thing being
+	 * waited for has become impossible — a link dropped, a peer went away, a
+	 * transfer was cancelled — because nothing will ever signal the semaphore
+	 * and the wait can only end by expiring. Sequences built from several such
+	 * waits then take the sum of every remaining timeout to notice a failure
+	 * that was already decided.
+	 *
+	 * This breaks the wait into @p poll_interval slices and re-tests @p abandon
+	 * between them, so the wait ends about one slice after the condition turns
+	 * true rather than at the deadline. @p abandon is called from the waiting
+	 * thread and must not block; it typically reads a flag or an @ref Atomic
+	 * that some callback context has cleared.
+	 *
+	 * Returns `errors::interrupted` when @p abandon ended the wait,
+	 * `errors::timed_out` when @p wait elapsed, and success when the semaphore
+	 * was taken. @p abandon is tested before the first slice, so an already
+	 * abandoned wait returns without touching the semaphore, and again after
+	 * the last, so the reason reported for a wait that ran out is the one that
+	 * actually holds. A `duration::max()` @p wait polls forever.
+	 */
+	template <typename Rep, typename Period, typename Predicate>
+	[[nodiscard]] Result<> take_unless(
+		std::chrono::duration<Rep, Period> wait, Predicate &&abandon,
+		std::chrono::milliseconds poll_interval = std::chrono::milliseconds{100}) noexcept
+	{
+		using Duration = std::chrono::duration<Rep, Period>;
+		using std::chrono::milliseconds;
+
+		if (poll_interval <= milliseconds::zero()) {
+			poll_interval = milliseconds{100};
+		}
+		const bool forever = wait >= Duration::max();
+		milliseconds remaining =
+			forever ? milliseconds::zero()
+				: std::chrono::ceil<milliseconds>(
+					  wait > Duration::zero() ? wait : Duration::zero());
+
+		while (true) {
+			if (abandon()) {
+				return fail(errors::interrupted);
+			}
+			const milliseconds slice =
+				forever ? poll_interval
+					: (remaining < poll_interval ? remaining : poll_interval);
+			if (k_sem_take(&semaphore_, detail::timeout(slice)) == 0) {
+				return {};
+			}
+			if (!forever) {
+				remaining -= slice;
+				if (remaining <= milliseconds::zero()) {
+					break;
+				}
+			}
+		}
+		return abandon() ? fail(errors::interrupted) : fail(errors::timed_out);
+	}
+
 	/** Signal the semaphore. Safe to call from an ISR. */
 	void give() noexcept
 	{

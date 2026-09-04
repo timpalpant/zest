@@ -26,23 +26,26 @@ part has a double-precision FPU.
 | --- | --- |
 | Errors | `Error`, `Result<T>`, `check()`, `ZEST_TRY`, `errors::*` |
 | Units | `Quantity`, `Millivolts`, `Milliamps`, `Ohms`, `MilliCelsius`, `Hertz`, literals |
-| Analog and digital I/O | `AdcChannel`, `VoltageDivider`, `GpioInput`, `GpioInterruptInput`, `GpioOutput`, `Button` |
+| Analog and digital I/O | `AdcChannel`, `AdcChannelSpec`, `VoltageDivider`, `GpioInput`, `GpioInterruptInput`, `GpioOutput`, `Button` |
 | Signal processing | `MovingAverage`, `MedianFilter`, `ExponentialMovingAverage`, `ShiftMovingAverage`, `Hysteresis`, `ThresholdDetector` |
 | Transforms | `Calibration`, `IntegerCalibration`, `LinearMap`, `integer_map` |
 | Control | `PidController`, `SlewRateLimiter`, `slew_toward`, `StateMachine` |
 | Timing and policy | `RateLimiter`, `Debouncer`, `RetryPolicy`, `ExponentialBackoff` |
 | Battery | `BatteryMonitor`, `BatteryCurve`, `battery_curve()` (all in `zest/battery.hpp`) |
-| Buses | `I2cDevice`, `SpiDevice`, `Uart` |
+| Buses | `I2cDevice`, `SpiDevice`, `Uart`, `BufferedUart` |
 | Sensors | `SensorReader`, `SensorBatch`, `AsyncSensorReader`, `SensorChannel`, `PeriodicSampler` |
+| Audio | `I2sInput`, `I2sOutput`, `I2sBlock` |
 | Actuators | `PwmOutput`, `DimmableLed`, `RgbLed`, `Servo`, `Buzzer`, `LedPatternPlayer` |
-| Buffers | `SpscRingBuffer`, `MessageQueue` |
+| Buffers | `SpscRingBuffer`, `ByteRing`, `MessageQueue` |
 | Serialization | `Schema`, `Format`, `serialize`, `deserialize`, `json::`, `cbor::` |
 | Callables | `FunctionRef`, `InplaceFunction` |
 | Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()`, `UptimeClock` |
-| Persistence | `Settings`, `ProvisioningManager`, `RetainedValue` |
+| Persistence | `Settings`, `ProvisioningManager`, `RetainedValue`, `FlashPartition` |
 | Networking | `DnsResolver`, `UdpSocket`, `TcpSocket`, `Poller`, `SntpClient`, `TimeSynchronizer`, `MqttClient`, `NetworkMonitor`, `WifiManager`, `HttpClient` |
+| Bluetooth | `BleConnection`, `BleAddress`, `BleConnectionObserver`, `ble_connect()`, `BluetoothManager` |
 | Security | `StaticCredential`, `OwnedCredential` |
-| System | `WatchdogDevice`, `WatchdogChannel`, `Rtc`, `RebootReason`, `DeviceIdentity`, `PowerManager` |
+| System | `WatchdogDevice`, `WatchdogChannel`, `Rtc`, `RebootReason`, `DeviceIdentity`, `PowerManager`, `FirmwareUpdate`, `UsbDevice` |
+| Shell | `ShellArgs`, `shell_report`, `shell_finish` |
 
 ## Requirements
 
