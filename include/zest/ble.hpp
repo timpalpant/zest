@@ -117,7 +117,7 @@ class BleConnection
 	/**
 	 * Take over a reference the caller already holds.
 	 *
-	 * This is the `bt_conn_le_create()` case, and @ref connect's. Adopting a
+	 * This is the `bt_conn_le_create()` case, and @ref ble_connect's. Adopting a
 	 * borrowed pointer under-counts and will free the connection early.
 	 */
 	[[nodiscard]] static BleConnection adopt(bt_conn *connection) noexcept;

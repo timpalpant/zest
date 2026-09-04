@@ -121,7 +121,7 @@ class AdcChannelSpec
  * back negative.
  *
  * This is @ref AdcChannelSpec plus the one-shot read. Code that drives the
- * converter itself wants the spec alone — reach it with @ref spec.
+ * converter itself wants the spec alone — reach it with @ref AdcChannel::spec.
  */
 class AdcChannel
 {

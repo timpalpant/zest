@@ -276,9 +276,12 @@ class I2sInput: public I2sStream
 /**
  * The transmitting half of an I2S device.
  *
- * `i2s_write()` takes ownership of the block it is given — including when it
- * fails — so this allocates from the slab, hands the caller a span to fill, and
- * only then submits it. That is the shape that cannot double-free.
+ * `i2s_write()` transfers ownership of a block only when it succeeds; every
+ * failure path returns before the block is queued, leaving it the caller's to
+ * release. Getting that backwards either leaks a block per failure until the
+ * slab is empty and the stream stops, or returns a block the driver still owns.
+ * So the allocation, the copy and the submission all happen here, and the
+ * caller never holds a transmit block at all.
  */
 class I2sOutput: public I2sStream
 {
@@ -309,11 +312,51 @@ class I2sOutput: public I2sStream
 	}
 
 	/**
+	 * Fill the next block in place and queue it.
+	 *
+	 * @p fill is called with a writable span of exactly the configured block
+	 * size, in the slab block that will be transmitted — so a renderer writes
+	 * its samples once, rather than into a scratch buffer that @ref write then
+	 * copies again. On an audio path that is a memcpy of the whole block every
+	 * period, which is worth not doing.
+	 *
+	 * The block is queued when @p fill returns, and returned to the slab if the
+	 * driver declines it. @p fill cannot leak it either way.
+	 */
+	template <typename Fill>
+		requires std::is_invocable_v<Fill, std::span<std::byte>>
+	[[nodiscard]] Result<> write_with(Fill &&fill) noexcept
+	{
+		auto block = allocate();
+		if (!block) {
+			return fail(block.error());
+		}
+		std::forward<Fill>(fill)(
+			std::span<std::byte>{static_cast<std::byte *>(*block), block_size_});
+		return submit(*block);
+	}
+
+	/** As @ref write_with, with the span typed as samples of @p T. */
+	template <typename T, typename Fill>
+		requires(std::is_trivially_copyable_v<T> && std::is_invocable_v<Fill, std::span<T>>)
+	[[nodiscard]] Result<> write_samples_with(Fill &&fill) noexcept
+	{
+		if (block_size_ % sizeof(T) != 0U) {
+			return fail(errors::invalid_argument);
+		}
+		return write_with([&](std::span<std::byte> bytes) noexcept {
+			std::forward<Fill>(fill)(std::span<T>{reinterpret_cast<T *>(bytes.data()),
+							      bytes.size() / sizeof(T)});
+		});
+	}
+
+	/**
 	 * Queue a block of silence.
 	 *
 	 * Cheaper than zeroing a caller-side buffer first, and the thing a
 	 * real-time path wants when its producer missed a deadline: an underrun
-	 * puts the stream in the error state, from which only @ref drop recovers.
+	 * puts the stream in the error state, from which only @ref I2sStream::drop
+	 * recovers.
 	 */
 	[[nodiscard]] Result<> write_silence() noexcept;
 
@@ -326,6 +369,9 @@ class I2sOutput: public I2sStream
       private:
 	/** Allocate a block, waiting up to the configured timeout. */
 	[[nodiscard]] Result<void *> allocate() noexcept;
+
+	/** Queue @p block, returning it to the slab if the driver would not take it. */
+	[[nodiscard]] Result<> submit(void *block) noexcept;
 
 	k_mem_slab *slab_{};
 	std::size_t block_size_{};

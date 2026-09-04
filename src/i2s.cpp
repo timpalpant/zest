@@ -221,13 +221,7 @@ Result<> I2sOutput::write(std::span<const std::byte> data) noexcept
 		return fail(block.error());
 	}
 	std::memcpy(*block, data.data(), data.size());
-
-	/*
-	 * i2s_write() takes the block whether or not it succeeds, so this must
-	 * not free it on the error path — doing so returns a block the driver
-	 * still owns and corrupts the slab.
-	 */
-	return check(i2s_write(device_, *block, block_size_));
+	return submit(*block);
 }
 
 Result<> I2sOutput::write_silence() noexcept
@@ -237,7 +231,22 @@ Result<> I2sOutput::write_silence() noexcept
 		return fail(block.error());
 	}
 	std::memset(*block, 0, block_size_);
-	return check(i2s_write(device_, *block, block_size_));
+	return submit(*block);
+}
+
+/*
+ * i2s_write() transfers ownership of the block only when it succeeds: every
+ * failure path returns before the block is queued, leaving it the caller's. So
+ * a failed submit has to give it back, or the slab drains one block per failure
+ * until the stream stops for want of anywhere to put samples.
+ */
+Result<> I2sOutput::submit(void *block) noexcept
+{
+	if (const int rc = i2s_write(device_, block, block_size_); rc != 0) {
+		k_mem_slab_free(slab_, block);
+		return fail(rc);
+	}
+	return {};
 }
 
 } /* namespace zest */
