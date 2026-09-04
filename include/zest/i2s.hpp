@@ -32,6 +32,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <type_traits>
 #include <utility>
@@ -301,14 +302,17 @@ class I2sOutput: public I2sStream
 	 * whole blocks, so a short one would send whatever the slab happened to
 	 * hold in the remainder.
 	 */
-	[[nodiscard]] Result<> write(std::span<const std::byte> data) noexcept;
+	[[nodiscard]] Result<> write(std::span<const std::byte> data,
+				     std::optional<std::chrono::milliseconds> wait = {}) noexcept;
 
 	/** As @ref write, for a span of samples. */
 	template <typename T>
 		requires std::is_trivially_copyable_v<T>
-	[[nodiscard]] Result<> write_samples(std::span<const T> samples) noexcept
+	[[nodiscard]] Result<>
+	write_samples(std::span<const T> samples,
+		      std::optional<std::chrono::milliseconds> wait = {}) noexcept
 	{
-		return write(std::as_bytes(samples));
+		return write(std::as_bytes(samples), wait);
 	}
 
 	/**
@@ -322,12 +326,17 @@ class I2sOutput: public I2sStream
 	 *
 	 * The block is queued when @p fill returns, and returned to the slab if the
 	 * driver declines it. @p fill cannot leak it either way.
+	 *
+	 * @p wait bounds how long to wait for a free block; unset uses the
+	 * configured stream timeout. A caller with its own deadline — a real-time
+	 * path that would rather report back-pressure than miss it — passes one.
 	 */
 	template <typename Fill>
 		requires std::is_invocable_v<Fill, std::span<std::byte>>
-	[[nodiscard]] Result<> write_with(Fill &&fill) noexcept
+	[[nodiscard]] Result<>
+	write_with(Fill &&fill, std::optional<std::chrono::milliseconds> wait = {}) noexcept
 	{
-		auto block = allocate();
+		auto block = allocate(wait);
 		if (!block) {
 			return fail(block.error());
 		}
@@ -358,7 +367,8 @@ class I2sOutput: public I2sStream
 	 * puts the stream in the error state, from which only @ref I2sStream::drop
 	 * recovers.
 	 */
-	[[nodiscard]] Result<> write_silence() noexcept;
+	[[nodiscard]] Result<>
+	write_silence(std::optional<std::chrono::milliseconds> wait = {}) noexcept;
 
 	/** The configured block size in bytes, or zero before @ref configure. */
 	[[nodiscard]] std::size_t block_size() const noexcept
@@ -367,8 +377,9 @@ class I2sOutput: public I2sStream
 	}
 
       private:
-	/** Allocate a block, waiting up to the configured timeout. */
-	[[nodiscard]] Result<void *> allocate() noexcept;
+	/** Allocate a block, waiting up to @p wait or the configured timeout. */
+	[[nodiscard]] Result<void *>
+	allocate(std::optional<std::chrono::milliseconds> wait) noexcept;
 
 	/** Queue @p block, returning it to the slab if the driver would not take it. */
 	[[nodiscard]] Result<> submit(void *block) noexcept;

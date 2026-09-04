@@ -198,25 +198,27 @@ Result<> I2sOutput::configure(const I2sFormat &format, k_mem_slab &slab,
 	return {};
 }
 
-Result<void *> I2sOutput::allocate() noexcept
+Result<void *> I2sOutput::allocate(std::optional<std::chrono::milliseconds> wait) noexcept
 {
 	if (slab_ == nullptr || block_size_ == 0U) {
 		return fail(errors::bad_descriptor);
 	}
 	void *block = nullptr;
-	if (const int rc = k_mem_slab_alloc(slab_, &block, detail::timeout(allocation_timeout_));
+	if (const int rc = k_mem_slab_alloc(slab_, &block,
+					    detail::timeout(wait.value_or(allocation_timeout_)));
 	    rc != 0) {
 		return fail(rc);
 	}
 	return block;
 }
 
-Result<> I2sOutput::write(std::span<const std::byte> data) noexcept
+Result<> I2sOutput::write(std::span<const std::byte> data,
+			  std::optional<std::chrono::milliseconds> wait) noexcept
 {
 	if (data.size() != block_size_) {
 		return fail(errors::invalid_argument);
 	}
-	auto block = allocate();
+	auto block = allocate(wait);
 	if (!block) {
 		return fail(block.error());
 	}
@@ -224,9 +226,9 @@ Result<> I2sOutput::write(std::span<const std::byte> data) noexcept
 	return submit(*block);
 }
 
-Result<> I2sOutput::write_silence() noexcept
+Result<> I2sOutput::write_silence(std::optional<std::chrono::milliseconds> wait) noexcept
 {
-	auto block = allocate();
+	auto block = allocate(wait);
 	if (!block) {
 		return fail(block.error());
 	}
