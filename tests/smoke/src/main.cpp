@@ -780,6 +780,7 @@ ZTEST(zest_smoke, test_buffered_uart_surface_compiles)
 	zassert_equal(uart.stats().interrupts, 0U);
 	zassert_equal(uart.stats().receive_overruns, 0U);
 	zassert_equal(uart.stats().transmit_stalls, 0U);
+	zassert_equal(uart.stats().transmit_ready, 0U);
 	zassert_equal(uart.stats().bytes_sent, 0U);
 
 	/* Queuing without a device still buffers: the ring is the object's, and

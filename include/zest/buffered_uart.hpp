@@ -55,6 +55,16 @@ struct BufferedUartStats {
 	 */
 	std::uint32_t receive_overruns{0U};
 	/**
+	 * Interrupt passes that found the transmitter ready for more bytes.
+	 *
+	 * Read against @ref transmit_stalls, this separates the two ways a
+	 * transmit stops: zero here with bytes queued means the transmit
+	 * interrupt is not being raised at all, while a count that climbs
+	 * alongside the stalls means it is being raised and the FIFO is refusing
+	 * the bytes.
+	 */
+	std::uint32_t transmit_ready{0U};
+	/**
 	 * Transmit interrupts where the FIFO accepted nothing.
 	 *
 	 * A few are normal. A count that climbs while bytes stay queued means
@@ -359,6 +369,7 @@ class BufferedUart
 				self->service_receive(device);
 			}
 			if (uart_irq_tx_ready(device) != 0) {
+				++self->stats_.transmit_ready;
 				self->service_transmit(device);
 			}
 		}
