@@ -187,6 +187,32 @@ class AdcChannel
 		return read_average_microvolts(Samples);
 	}
 
+	/**
+	 * Median of @p samples conversions taken as repeated single reads, as
+	 * raw sample values.
+	 *
+	 * Collects the burst serially rather than in one hardware sequence: the
+	 * median needs the individual values, and a corrupt conversion (a bus
+	 * glitch, a converter caught mid-reconfiguration) moves a mean by a
+	 * share of the span but cannot move a median. An even count averages
+	 * the two middle values. At most 32 samples, so the stack buffer stays
+	 * a predictable size; fails fast on the first conversion error, like
+	 * the average --- retry policy belongs to the caller.
+	 */
+	[[nodiscard]] Result<std::int32_t>
+	read_median_raw(std::size_t samples) const noexcept;
+
+	/**
+	 * Median of @p samples conversions taken as repeated single reads, in
+	 * microvolts.
+	 *
+	 * The median is taken in the raw domain and converted once, exactly as
+	 * the average is, so no per-conversion quantization leaks into the
+	 * result. Same collection, limits and error behavior as the raw form.
+	 */
+	[[nodiscard]] Result<Microvolts>
+	read_median_microvolts(std::size_t samples) const noexcept;
+
 	/** The channel's configured resolution in bits. */
 	[[nodiscard]] constexpr std::uint8_t resolution() const noexcept
 	{

@@ -8,6 +8,7 @@
 
 #include <zephyr/drivers/adc.h>
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstdint>
@@ -164,6 +165,42 @@ Result<Microvolts> AdcChannel::read_microvolts() const noexcept
 Result<Microvolts> AdcChannel::read_average_microvolts(std::size_t samples) const noexcept
 {
 	auto raw_result = read_average_raw(samples);
+	if (!raw_result) {
+		return fail(raw_result.error());
+	}
+	auto raw = *raw_result;
+	return to_microvolts(raw);
+}
+
+Result<std::int32_t> AdcChannel::read_median_raw(std::size_t samples) const noexcept
+{
+	if (samples == 0U || samples > kMaxBurst) {
+		return fail(errors::invalid_argument);
+	}
+
+	std::array<std::int32_t, kMaxBurst> burst{};
+	for (std::size_t i = 0; i < samples; ++i) {
+		auto raw_result = read_raw();
+		if (!raw_result) {
+			return fail(raw_result.error());
+		}
+		burst[i] = *raw_result;
+	}
+
+	std::sort(burst.begin(), burst.begin() + samples);
+	if (samples % 2U == 1U) {
+		return burst[samples / 2U];
+	}
+	/* Even count: mean of the two middle values, rounded. Either alone
+	 * would do as a median; the mean keeps the quantum at half an LSB. */
+	const std::int64_t middle = static_cast<std::int64_t>(burst[samples / 2U - 1U]) +
+				    burst[samples / 2U];
+	return static_cast<std::int32_t>((middle + 1) / 2);
+}
+
+Result<Microvolts> AdcChannel::read_median_microvolts(std::size_t samples) const noexcept
+{
+	auto raw_result = read_median_raw(samples);
 	if (!raw_result) {
 		return fail(raw_result.error());
 	}
