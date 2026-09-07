@@ -193,8 +193,8 @@ Result<std::int32_t> AdcChannel::read_median_raw(std::size_t samples) const noex
 	}
 	/* Even count: mean of the two middle values, rounded. Either alone
 	 * would do as a median; the mean keeps the quantum at half an LSB. */
-	const std::int64_t middle = static_cast<std::int64_t>(burst[samples / 2U - 1U]) +
-				    burst[samples / 2U];
+	const std::int64_t middle =
+		static_cast<std::int64_t>(burst[samples / 2U - 1U]) + burst[samples / 2U];
 	return static_cast<std::int32_t>((middle + 1) / 2);
 }
 
