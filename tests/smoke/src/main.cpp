@@ -58,6 +58,9 @@
 #if defined(CONFIG_ZEST_I2C)
 #include <zest/i2c.hpp>
 #endif
+#if defined(CONFIG_ZEST_I2C_GPIO_EXPANDER)
+#include <zest/i2c_gpio_expander.hpp>
+#endif
 #if defined(CONFIG_ZEST_SPI)
 #include <zest/spi.hpp>
 #endif
@@ -1136,6 +1139,20 @@ ZTEST(zest_smoke, test_i2c_surface)
 	zassert_equal(sensor.write({}).error(), zest::errors::invalid_argument);
 	zassert_equal(sensor.read({}).error(), zest::errors::invalid_argument);
 	zassert_equal(sensor.read_registers(0x00, {}).error(), zest::errors::invalid_argument);
+}
+#endif
+
+#if defined(CONFIG_ZEST_I2C_GPIO_EXPANDER)
+ZTEST(zest_smoke, test_i2c_gpio_expander_requires_initialized_bus)
+{
+	static_assert(std::is_nothrow_constructible_v<zest::I2cGpioExpander, i2c_dt_spec>);
+
+	zest::I2cGpioExpander expander{i2c_dt_spec{}};
+	zassert_equal(expander.init().error(), zest::errors::no_device);
+	zassert_equal(expander.probe().error(), zest::errors::no_device);
+	zassert_equal(expander.write(0x5A).error(), zest::errors::no_device);
+	zassert_equal(expander.update(0x0F, 0x03).error(), zest::errors::no_device);
+	zassert_equal(expander.shadow(), 0U);
 }
 #endif
 

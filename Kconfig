@@ -96,6 +96,15 @@ config ZEST_I2C
 	help
 	  Typed I2C register and burst access, for a part with no Zephyr driver.
 
+config ZEST_I2C_GPIO_EXPANDER
+	bool "I2C GPIO expander output port"
+	depends on ZEST_I2C
+	help
+	  An eight-bit, registerless I2C output port with a software shadow and
+	  masked updates. It is suitable for quasi-bidirectional expanders such as
+	  the PCF8574, where reading the pins is not a safe substitute for reading
+	  an output latch.
+
 config ZEST_SPI
 	bool "SpiDevice"
 	depends on SPI

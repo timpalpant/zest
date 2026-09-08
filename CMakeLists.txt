@@ -15,6 +15,7 @@ zephyr_library_sources(src/error.cpp)
 
 zephyr_library_sources_ifdef(CONFIG_ZEST_ADC_CHANNEL src/adc_channel.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_GPIO src/gpio.cpp)
+zephyr_library_sources_ifdef(CONFIG_ZEST_I2C_GPIO_EXPANDER src/i2c_gpio_expander.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_I2S src/i2s.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_FLASH_PARTITION src/flash_partition.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_PWM_OUTPUT src/pwm.cpp)
