@@ -15,6 +15,7 @@
 #include <zephyr/net/http/client.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/fdtable.h>
 
 namespace zest
 {
@@ -62,6 +63,7 @@ struct RequestContext {
 	std::size_t content_length{};
 	std::uint16_t status_code{};
 	bool truncated{};
+	k_timepoint_t deadline{};
 };
 
 class Socket final
@@ -231,11 +233,30 @@ class Socket final
 	return HTTP_GET;
 }
 
-int send_all(int socket, std::string_view data) noexcept
+int send_all(int socket, std::string_view data, k_timepoint_t deadline) noexcept
 {
 	while (!data.empty()) {
+		if (sys_timepoint_expired(deadline)) {
+			return -ETIMEDOUT;
+		}
 		const auto sent = zsock_send(socket, data.data(), data.size(), 0);
 		if (sent < 0) {
+			if (errno == EINTR) {
+				continue;
+			}
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				zsock_pollfd fd{socket, ZSOCK_POLLOUT, 0};
+				const int remaining =
+					k_ticks_to_ms_ceil32(sys_timepoint_timeout(deadline).ticks);
+				const int ready = zsock_poll(&fd, 1, remaining);
+				if (ready == 0) {
+					return -ETIMEDOUT;
+				}
+				if (ready < 0 && errno != EINTR) {
+					return -errno;
+				}
+				continue;
+			}
 			return -errno;
 		}
 		if (sent == 0) {
@@ -252,7 +273,7 @@ int optional_headers_callback(int socket, struct http_request *, void *user_data
 	int bytes_sent = 0;
 
 	auto send_part = [&](std::string_view part) -> bool {
-		const int result = send_all(socket, part);
+		const int result = send_all(socket, part, context.deadline);
 		if (result != 0) {
 			bytes_sent = result;
 			return false;
@@ -400,6 +421,13 @@ int response_callback(struct http_response *response, enum http_final_call,
 #endif
 
 		if (zsock_connect(socket.get(), address->ai_addr, address->ai_addrlen) == 0) {
+			/* http_client_req polls against its deadline only when send
+			 * returns EAGAIN; blocking sockets bypass that protection. */
+			if (zsock_fcntl(socket.get(), ZVFS_F_SETFL, ZVFS_O_NONBLOCK) < 0) {
+				last_error = Error{-errno};
+				last_stage = HttpErrorStage::socket;
+				continue;
+			}
 			zsock_freeaddrinfo(addresses);
 			return socket;
 		}
@@ -443,93 +471,100 @@ Result<HttpResponse, HttpError> HttpClient::request(const HttpRequest &request,
 		return std::unexpected(parsed.error());
 	}
 
-	/* Reuse a pooled connection when it targets the same origin. */
-	Socket socket;
-	bool reused = false;
-	if (options_.keep_alive && pooled_descriptor_ >= 0 && pooled_port_ == parsed->port_value &&
-	    pooled_tls_ == parsed->tls &&
-	    std::strncmp(pooled_host_.data(), parsed->host.data(), pooled_host_.size()) == 0) {
-		socket = Socket{pooled_descriptor_};
-		pooled_descriptor_ = -1;
-		reused = true;
-	} else {
-		close();
-		auto fresh = connect_socket(*parsed, options_);
-		if (!fresh) {
-			return std::unexpected(fresh.error());
-		}
-		socket = std::move(*fresh);
-	}
-
-	RequestContext context{
-		.default_headers = options_.default_headers,
-		.headers = request.headers,
-		.user_agent =
-			options_.user_agent.empty() ? default_user_agent : options_.user_agent,
-		.output = response_buffer,
-		.keep_alive = options_.keep_alive,
-	};
-	std::array<std::uint8_t, http_receive_chunk> receive_buffer{};
-
-	struct http_request zephyr_request{};
-	zephyr_request.method = to_zephyr_method(request.method);
-	zephyr_request.url = parsed->path.data();
-	zephyr_request.protocol = "HTTP/1.1";
-	zephyr_request.host = parsed->host.data();
-	zephyr_request.port = parsed->explicit_port ? parsed->port.data() : nullptr;
-	zephyr_request.response = response_callback;
-	zephyr_request.recv_buf = receive_buffer.data();
-	zephyr_request.recv_buf_len = receive_buffer.size();
-	zephyr_request.optional_headers_cb = optional_headers_callback;
-	zephyr_request.payload = request.body.empty()
-					 ? nullptr
-					 : reinterpret_cast<const char *>(request.body.data());
-	zephyr_request.payload_len = request.body.size();
-
-	std::array<char, 96> content_type{};
-	if (!request.content_type.empty()) {
-		if (request.content_type.size() >= content_type.size()) {
-			return std::unexpected(
-				error_at(HttpErrorStage::request, errors::name_too_long));
-		}
-		std::ranges::copy(request.content_type, content_type.begin());
-		zephyr_request.content_type_value = content_type.data();
-	}
-
-	const auto timeout_count = options_.timeout.count();
-	const auto timeout =
-		static_cast<std::int32_t>(std::clamp<std::int64_t>(timeout_count, 1, INT32_MAX));
-	const int result = http_client_req(socket.get(), &zephyr_request, timeout, &context);
-	if (result < 0) {
-		/* A reused connection the peer had already closed deserves one retry. */
-		if (reused) {
+	/* Each attempt owns its socket and stack frame. A failed pooled
+	 * connection gets one fresh attempt without recursive stack growth. */
+	for (;;) {
+		/* Reuse a pooled connection when it targets the same origin. */
+		Socket socket;
+		bool reused = false;
+		if (options_.keep_alive && pooled_descriptor_ >= 0 &&
+		    pooled_port_ == parsed->port_value && pooled_tls_ == parsed->tls &&
+		    std::strncmp(pooled_host_.data(), parsed->host.data(), pooled_host_.size()) ==
+			    0) {
+			socket = Socket{pooled_descriptor_};
+			pooled_descriptor_ = -1;
+			reused = true;
+		} else {
 			close();
-			return this->request(request, response_buffer);
+			auto fresh = connect_socket(*parsed, options_);
+			if (!fresh) {
+				return std::unexpected(fresh.error());
+			}
+			socket = std::move(*fresh);
 		}
-		return std::unexpected(error_at(HttpErrorStage::request, Error{result}));
-	}
 
-	if (context.truncated && options_.truncation_is_error) {
-		return std::unexpected(
-			error_at(HttpErrorStage::response_too_large, errors::message_size));
-	}
+		RequestContext context{
+			.default_headers = options_.default_headers,
+			.headers = request.headers,
+			.user_agent = options_.user_agent.empty() ? default_user_agent
+								  : options_.user_agent,
+			.output = response_buffer,
+			.keep_alive = options_.keep_alive,
+		};
+		std::array<std::uint8_t, http_receive_chunk> receive_buffer{};
 
-	if (options_.keep_alive) {
-		pooled_descriptor_ = socket.release();
-		pooled_port_ = parsed->port_value;
-		pooled_tls_ = parsed->tls;
-		pooled_host_ = {};
-		std::memcpy(pooled_host_.data(), parsed->host.data(),
-			    std::strlen(parsed->host.data()));
-	}
+		struct http_request zephyr_request{};
+		zephyr_request.method = to_zephyr_method(request.method);
+		zephyr_request.url = parsed->path.data();
+		zephyr_request.protocol = "HTTP/1.1";
+		zephyr_request.host = parsed->host.data();
+		zephyr_request.port = parsed->explicit_port ? parsed->port.data() : nullptr;
+		zephyr_request.response = response_callback;
+		zephyr_request.recv_buf = receive_buffer.data();
+		zephyr_request.recv_buf_len = receive_buffer.size();
+		zephyr_request.optional_headers_cb = optional_headers_callback;
+		zephyr_request.payload =
+			request.body.empty() ? nullptr
+					     : reinterpret_cast<const char *>(request.body.data());
+		zephyr_request.payload_len = request.body.size();
 
-	HttpResponse response{
-		.status_code = context.status_code,
-		.body = response_buffer.first(context.output_size),
-		.content_length = context.content_length,
-		.body_truncated = context.truncated,
-	};
-	return response;
+		std::array<char, 96> content_type{};
+		if (!request.content_type.empty()) {
+			if (request.content_type.size() >= content_type.size()) {
+				return std::unexpected(
+					error_at(HttpErrorStage::request, errors::name_too_long));
+			}
+			std::ranges::copy(request.content_type, content_type.begin());
+			zephyr_request.content_type_value = content_type.data();
+		}
+
+		const auto timeout_count = options_.timeout.count();
+		const auto timeout = static_cast<std::int32_t>(
+			std::clamp<std::int64_t>(timeout_count, 1, INT32_MAX));
+		context.deadline = sys_timepoint_calc(K_MSEC(timeout));
+		const int result =
+			http_client_req(socket.get(), &zephyr_request, timeout, &context);
+		if (result < 0) {
+			/* A reused connection the peer had already closed deserves one retry. */
+			if (reused) {
+				close();
+				continue;
+			}
+			return std::unexpected(error_at(HttpErrorStage::request, Error{result}));
+		}
+
+		if (context.truncated && options_.truncation_is_error) {
+			return std::unexpected(
+				error_at(HttpErrorStage::response_too_large, errors::message_size));
+		}
+
+		if (options_.keep_alive) {
+			pooled_descriptor_ = socket.release();
+			pooled_port_ = parsed->port_value;
+			pooled_tls_ = parsed->tls;
+			pooled_host_ = {};
+			std::memcpy(pooled_host_.data(), parsed->host.data(),
+				    std::strlen(parsed->host.data()));
+		}
+
+		HttpResponse response{
+			.status_code = context.status_code,
+			.body = response_buffer.first(context.output_size),
+			.content_length = context.content_length,
+			.body_truncated = context.truncated,
+		};
+		return response;
+	}
 }
 
 Result<HttpResponse, HttpError> HttpClient::get(std::string_view url,
