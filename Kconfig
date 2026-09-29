@@ -250,6 +250,40 @@ config ZEST_HTTP_MAX_URL_LEN
 
 endif # ZEST_HTTP_CLIENT
 
+config ZEST_OTA_CLIENT
+	bool "OtaClient"
+	depends on ZEST_HTTP_CLIENT && ZEST_JSON
+	help
+	  Fetching a firmware image from a static update directory: read a
+	  manifest.json and stream the image it names, one HTTP Range request at a
+	  time, into a sink the caller supplies. The counterpart of FirmwareUpdate,
+	  which says where an image goes and nothing about where it comes from.
+
+	  Needs a web server that honours Range (any static file server does), and
+	  gives no authentication of its own: use plain http:// only with images the
+	  bootloader verifies by signature.
+
+if ZEST_OTA_CLIENT
+
+config ZEST_OTA_CHUNK_SIZE
+	int "Range size"
+	default 2048
+	range 512 4096
+	help
+	  Bytes per Range request. Each response is parsed into
+	  ZEST_HTTP_RECV_BUF_SIZE, which must be at least this large. Larger chunks
+	  mean fewer round trips; the chunk buffer is heap-allocated for the length
+	  of a download.
+
+config ZEST_OTA_MANIFEST_BUFFER_SIZE
+	int "Manifest buffer size"
+	default 1024
+	range 256 4096
+	help
+	  The most manifest.json can be. Heap-allocated for the length of a fetch.
+
+endif # ZEST_OTA_CLIENT
+
 config ZEST_FIRMWARE_UPDATE
 	bool "FirmwareUpdate"
 	depends on MCUBOOT_IMG_MANAGER

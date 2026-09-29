@@ -27,6 +27,7 @@ zephyr_library_sources_ifdef(CONFIG_ZEST_NETWORK_MONITOR src/network_monitor.cpp
 zephyr_library_sources_ifdef(CONFIG_ZEST_SYSTEM src/system.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_HTTP_CLIENT src/http_client.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_FIRMWARE_UPDATE src/firmware_update.cpp)
+zephyr_library_sources_ifdef(CONFIG_ZEST_OTA_CLIENT src/ota_client.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_USB_DEVICE src/usb_device.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_WIFI_MANAGER src/wifi_manager.cpp)
 zephyr_library_sources_ifdef(CONFIG_ZEST_BLE src/ble.cpp)

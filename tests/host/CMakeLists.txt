@@ -39,6 +39,7 @@ set(ZEST_HOST_TESTS
   ring_buffer
   function
   image_version
+  ota_client
   sample_store
 
 )

@@ -415,6 +415,33 @@ work, and then a device that rebooted for an unrelated reason comes back on the
 old firmware. `confirm_running_image()` belongs where the new build has proved
 something end to end, not at the top of `main()`.
 
+`OtaClient` is the other half. `FirmwareUpdate` knows where an image goes and
+nothing about where it came from; `OtaClient` fetches from a static directory
+(a `manifest.json` and the images it names, behind any web server that honours
+HTTP Range) and knows nothing about where the bytes end up. It reads the
+manifest and streams a named image, one range request at a time, into a sink the
+caller supplies, so an image never has to fit in RAM. Everything that is policy
+stays with the application: when to check, whether "different" or "newer" means
+install, whether the sink writes the spare slot for a swapping bootloader or the
+primary slot in place (a firmware loader run from the secondary slot), and what
+follows. A client that owned those choices would fit exactly one product; two
+already differ on all of them.
+
+It carries no authentication, deliberately. Over plain HTTP the manifest and the
+bytes are untrusted, so the image must be authenticated by a signature the
+bootloader checks, and the worst a hostile network can then do is make an update
+fail. That is also why no TLS heap is needed. The one thing checked in the
+client is that a manifest cannot aim the download elsewhere: the image name must
+be a bare file name, resolved against the directory it was given.
+
+Working buffers (the manifest, one chunk) are heap-allocated for the length of a
+call. As a member of an object on a thread's stack they overflow it under the
+HTTP and TCP call chain, and as statics they cost RAM the whole time --- on a
+small ESP32 a few KB of statics moved the DRAM layout enough to break early
+flash initialisation. Errors say which step failed (`OtaStage`) and carry the
+byte offset, because "the update failed" is not something a device with no
+screen can be debugged from.
+
 ## 17. Thread safety
 
 | Category | Contract |

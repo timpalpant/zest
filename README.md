@@ -41,10 +41,10 @@ part has a double-precision FPU.
 | Callables | `FunctionRef`, `InplaceFunction` |
 | Kernel | `Mutex`, `ScopedLock`, `Semaphore`, `WorkItem`, `DelayableWorkItem`, `WorkQueue`, `PeriodicTimer`, `StaticThread`, `uptime()`, `sleep_for()`, `UptimeClock` |
 | Persistence | `Settings`, `ProvisioningManager`, `RetainedValue`, `FlashPartition` |
-| Networking | `DnsResolver`, `UdpSocket`, `TcpSocket`, `Poller`, `SntpClient`, `TimeSynchronizer`, `MqttClient`, `NetworkMonitor`, `WifiManager`, `HttpClient` |
+| Networking | `DnsResolver`, `UdpSocket`, `TcpSocket`, `Poller`, `SntpClient`, `TimeSynchronizer`, `MqttClient`, `NetworkMonitor`, `WifiManager`, `HttpClient`, `OtaClient` |
 | Bluetooth | `BleConnection`, `BleAddress`, `BleConnectionObserver`, `ble_connect()`, `BluetoothManager` |
 | Security | `StaticCredential`, `OwnedCredential` |
-| System | `WatchdogDevice`, `WatchdogChannel`, `Rtc`, `RebootReason`, `DeviceIdentity`, `PowerManager`, `FirmwareUpdate`, `UsbDevice` |
+| System | `WatchdogDevice`, `WatchdogChannel`, `Rtc`, `RebootReason`, `DeviceIdentity`, `PowerManager`, `FirmwareUpdate`, `ImageVersion`, `UsbDevice` |
 | Shell | `ShellArgs`, `shell_report`, `shell_finish` |
 
 ## Requirements
