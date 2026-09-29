@@ -8,31 +8,8 @@
 
 #include <zephyr/devicetree.h>
 
-#include <cstdio>
-
 namespace zest
 {
-
-Result<std::string_view> ImageVersion::format(std::span<char> destination) const noexcept
-{
-	if (destination.empty()) {
-		return fail(errors::no_buffer_space);
-	}
-	const int written =
-		std::snprintf(destination.data(), destination.size(), "%u.%u.%u+%u",
-			      static_cast<unsigned>(major), static_cast<unsigned>(minor),
-			      static_cast<unsigned>(revision), static_cast<unsigned>(build));
-	if (written < 0) {
-		return fail(errors::io_error);
-	}
-	if (static_cast<std::size_t>(written) >= destination.size()) {
-		/* snprintf truncated. Report it rather than returning a version
-		 * string that is a prefix of the real one and compares equal to
-		 * something else. */
-		return fail(errors::no_buffer_space);
-	}
-	return std::string_view{destination.data(), static_cast<std::size_t>(written)};
-}
 
 std::uint8_t FirmwareUpdate::partition_id(ImageSlot slot) noexcept
 {
@@ -81,12 +58,12 @@ Result<> FirmwareUpdate::confirm_running_image() noexcept
 
 /* ------------------------------------------------------------------ writer --- */
 
-Result<> FirmwareUpdate::Writer::begin() noexcept
+Result<> FirmwareUpdate::Writer::begin(ImageSlot slot) noexcept
 {
 	if (begun_) {
 		return fail(errors::already);
 	}
-	ZEST_TRY(check(flash_img_init(&context_)));
+	ZEST_TRY(check(flash_img_init_id(&context_, partition_id(slot))));
 	begun_ = true;
 	return {};
 }

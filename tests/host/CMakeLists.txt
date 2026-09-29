@@ -38,6 +38,7 @@ set(ZEST_HOST_TESTS
   control
   ring_buffer
   function
+  image_version
   sample_store
 
 )

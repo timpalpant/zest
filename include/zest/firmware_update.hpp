@@ -27,6 +27,7 @@
  */
 
 #include <zest/error.hpp>
+#include <zest/image_version.hpp>
 
 #include <zephyr/dfu/flash_img.h>
 #include <zephyr/dfu/mcuboot.h>
@@ -41,34 +42,12 @@
 namespace zest
 {
 
-/**
- * An image's MCUboot semantic version.
- *
- * Ordered by major, then minor, then revision, then build — the field order, so
- * the defaulted comparison is the right one and there is no packed integer key
- * to get wrong.
- */
-struct ImageVersion {
-	std::uint8_t major{};
-	std::uint8_t minor{};
-	std::uint16_t revision{};
-	std::uint32_t build{};
-
-	[[nodiscard]] constexpr auto operator<=>(const ImageVersion &) const noexcept = default;
-	[[nodiscard]] constexpr bool operator==(const ImageVersion &) const noexcept = default;
-
-	/**
-	 * Render as "major.minor.revision+build" into @p destination.
-	 *
-	 * Returns the text written, or an error if it would not fit. 24 characters
-	 * is always enough.
-	 */
-	[[nodiscard]] Result<std::string_view> format(std::span<char> destination) const noexcept;
-};
-
 /** Which MCUboot slot an operation names. */
 enum class ImageSlot : std::uint8_t {
-	/** The image that is running now. */
+	/**
+	 * The primary slot: the image that is running now --- or, for a firmware
+	 * loader that runs from the secondary slot, the application it installs.
+	 */
 	running,
 	/** The spare slot an update is written into. */
 	upload,
@@ -116,8 +95,15 @@ class FirmwareUpdate
 		Writer(const Writer &) = delete;
 		Writer &operator=(const Writer &) = delete;
 
-		/** Prepare the upload slot. Call once, before the first write. */
-		[[nodiscard]] Result<> begin() noexcept;
+		/**
+		 * Prepare a slot. Call once, before the first write.
+		 *
+		 * Defaults to the spare upload slot, which a swapping bootloader then
+		 * installs. A firmware loader --- a separate program run from the
+		 * secondary slot to replace the primary one in place --- passes
+		 * ImageSlot::running to write the application slot directly.
+		 */
+		[[nodiscard]] Result<> begin(ImageSlot slot = ImageSlot::upload) noexcept;
 
 		/**
 		 * Append @p data, flushing if @p last.
