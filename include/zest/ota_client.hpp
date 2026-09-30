@@ -10,7 +10,7 @@
  * @file
  * Fetching a firmware image from a static update directory.
  *
- * The other half of @ref FirmwareUpdate. That says nothing about where an image
+ * The other half of @ref zest::FirmwareUpdate. That says nothing about where an image
  * comes from; this says nothing about where it goes. Given a directory URL that
  * holds a `manifest.json` and the images it names --- plain files behind any web
  * server, which must honour HTTP Range --- it reads the manifest and streams a
