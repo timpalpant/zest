@@ -39,7 +39,11 @@ jobs:
 
   zephyr-tests:
     name: Zephyr tests
-    runs-on: ubuntu-latest
+    # native_sim compiles with the host's glibc and libstdc++. On Ubuntu 26.04
+    # their pthread mutex initializers break under Zephyr's `#define __unused`
+    # as soon as a test includes <chrono> or <sstream>, so every
+    # configuration fails before reaching Zest code.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
