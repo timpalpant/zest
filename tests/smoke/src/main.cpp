@@ -746,6 +746,9 @@ ZTEST(zest_smoke, test_byte_ring_claim_and_finish)
 	zassert_true(claim.size() >= 1U);
 	claim[0] = std::byte{9};
 	zassert_equal(ring.size(), 3U);
+	/* Committing more than was claimed is refused and leaves the claim open. */
+	zassert_false(ring.finish_put(claim.size() + 1U).has_value());
+	zassert_equal(ring.size(), 3U);
 	zassert_true(ring.finish_put(1U).has_value());
 	zassert_equal(ring.size(), 4U);
 
@@ -760,6 +763,7 @@ ZTEST(zest_smoke, test_byte_ring_claim_and_finish)
 	zassert_equal(ring.put(data), 3U);
 	auto peek = ring.claim_get(3U);
 	zassert_equal(peek.size(), 3U);
+	zassert_false(ring.finish_get(4U).has_value());
 	zassert_true(ring.finish_get(0U).has_value());
 	zassert_equal(ring.size(), 3U);
 

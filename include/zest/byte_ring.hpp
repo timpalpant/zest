@@ -15,10 +15,24 @@
 
 #include <zephyr/sys/ring_buffer.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <span>
+
+/*
+ * Zephyr 4.5 replaces the claim/finish calls with ring_buf_put_ptr() /
+ * ring_buf_commit() and ring_buf_get_ptr() / ring_buf_consume(), keeping the
+ * old ones only behind CONFIG_RING_BUFFER. Without that option its header
+ * redefines ring_buf_put_claim as a macro that fails the build, which is also
+ * the one reliable sign the _ptr calls are there: Zephyr 4.4.0 lacks them.
+ */
+#if defined(ring_buf_put_claim)
+#define ZEST_BYTE_RING_PTR_API 1
+#else
+#define ZEST_BYTE_RING_PTR_API 0
+#endif
 
 namespace zest
 {
@@ -123,8 +137,14 @@ class ByteRing
 	[[nodiscard]] std::span<std::byte> claim_put(std::size_t maximum) noexcept
 	{
 		std::uint8_t *data = nullptr;
+#if ZEST_BYTE_RING_PTR_API
+		const std::size_t claimed =
+			std::min<std::size_t>(ring_buf_put_ptr(&ring_, &data, 0U), maximum);
+		put_claimed_ = claimed;
+#else
 		const std::uint32_t claimed =
 			ring_buf_put_claim(&ring_, &data, static_cast<std::uint32_t>(maximum));
+#endif
 		if (claimed == 0U || data == nullptr) {
 			return {};
 		}
@@ -140,7 +160,16 @@ class ByteRing
 	 */
 	[[nodiscard]] Result<> finish_put(std::size_t written) noexcept
 	{
+#if ZEST_BYTE_RING_PTR_API
+		if (written > put_claimed_) {
+			return fail(errors::invalid_argument);
+		}
+		ring_buf_commit(&ring_, written);
+		put_claimed_ = 0U;
+		return {};
+#else
 		return check(ring_buf_put_finish(&ring_, static_cast<std::uint32_t>(written)));
+#endif
 	}
 
 	/**
@@ -151,8 +180,14 @@ class ByteRing
 	[[nodiscard]] std::span<const std::byte> claim_get(std::size_t maximum) noexcept
 	{
 		std::uint8_t *data = nullptr;
+#if ZEST_BYTE_RING_PTR_API
+		const std::size_t claimed =
+			std::min<std::size_t>(ring_buf_get_ptr(&ring_, &data, 0U), maximum);
+		get_claimed_ = claimed;
+#else
 		const std::uint32_t claimed =
 			ring_buf_get_claim(&ring_, &data, static_cast<std::uint32_t>(maximum));
+#endif
 		if (claimed == 0U || data == nullptr) {
 			return {};
 		}
@@ -167,7 +202,16 @@ class ByteRing
 	 */
 	[[nodiscard]] Result<> finish_get(std::size_t consumed) noexcept
 	{
+#if ZEST_BYTE_RING_PTR_API
+		if (consumed > get_claimed_) {
+			return fail(errors::invalid_argument);
+		}
+		ring_buf_consume(&ring_, consumed);
+		get_claimed_ = 0U;
+		return {};
+#else
 		return check(ring_buf_get_finish(&ring_, static_cast<std::uint32_t>(consumed)));
+#endif
 	}
 
 	[[nodiscard]] ring_buf *native_handle() noexcept
@@ -178,6 +222,12 @@ class ByteRing
       private:
 	ring_buf ring_{};
 	std::array<std::uint8_t, Capacity> storage_{};
+#if ZEST_BYTE_RING_PTR_API
+	/* What the outstanding claim on each side handed out, so finishing more
+	 * than that is rejected as ring_buf_*_finish() did. */
+	std::size_t put_claimed_ = 0U;
+	std::size_t get_claimed_ = 0U;
+#endif
 };
 
 } /* namespace zest */

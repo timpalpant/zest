@@ -363,8 +363,13 @@ class BufferedUart
 		}
 		++self->stats_.interrupts;
 		/* uart_irq_update() latches the pending state for this pass; both
-		 * ready checks below are meaningless without it. */
-		while (uart_irq_update(device) != 0 && uart_irq_is_pending(device) != 0) {
+		 * ready checks below are meaningless without it. Its result is not
+		 * read: Zephyr 4.4 returns an always-1 int, 4.5 returns void. */
+		for (;;) {
+			uart_irq_update(device);
+			if (uart_irq_is_pending(device) == 0) {
+				break;
+			}
 			if (uart_irq_rx_ready(device) != 0) {
 				self->service_receive(device);
 			}
