@@ -21,6 +21,20 @@
 #include <type_traits>
 #include <utility>
 
+/**
+ * The flash-area id of the partition with devicetree label @p label.
+ *
+ * Zephyr 4.5 renamed `FIXED_PARTITION_ID()` to `PARTITION_ID()`, which also
+ * covers `zephyr,mapped-partition` nodes, and deprecated the old name; 4.4 has
+ * only the old one. This picks whichever the tree provides, so callers build
+ * warning-free on both.
+ */
+#if defined(PARTITION_ID)
+#define ZEST_PARTITION_ID(label) PARTITION_ID(label)
+#else
+#define ZEST_PARTITION_ID(label) FIXED_PARTITION_ID(label)
+#endif
+
 namespace zest
 {
 
@@ -50,7 +64,7 @@ class FlashPartition
 	/**
 	 * Name the partition without opening it.
 	 *
-	 * Take @p id from `FIXED_PARTITION_ID(label)`, so a partition that is not
+	 * Take @p id from `ZEST_PARTITION_ID(label)`, so a partition that is not
 	 * in the devicetree is a build error rather than a run-time surprise.
 	 */
 	constexpr explicit FlashPartition(std::uint8_t id) noexcept : id_{id}

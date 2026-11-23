@@ -872,7 +872,7 @@ ZTEST(zest_smoke, test_i2s_block_returns_itself_to_the_slab)
 #if defined(CONFIG_ZEST_FLASH_PARTITION)
 ZTEST(zest_smoke, test_flash_partition_bounds_every_access)
 {
-	zest::FlashPartition partition{FIXED_PARTITION_ID(storage_partition)};
+	zest::FlashPartition partition{ZEST_PARTITION_ID(storage_partition)};
 	zassert_false(partition.is_open());
 
 	/* Every accessor reports the closed handle rather than dereferencing. */

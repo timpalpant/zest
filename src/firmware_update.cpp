@@ -5,6 +5,7 @@
  */
 
 #include <zest/firmware_update.hpp>
+#include <zest/flash_partition.hpp>
 
 #include <zephyr/devicetree.h>
 
@@ -13,8 +14,8 @@ namespace zest
 
 std::uint8_t FirmwareUpdate::partition_id(ImageSlot slot) noexcept
 {
-	return slot == ImageSlot::running ? FIXED_PARTITION_ID(slot0_partition)
-					  : FIXED_PARTITION_ID(slot1_partition);
+	return slot == ImageSlot::running ? ZEST_PARTITION_ID(slot0_partition)
+					  : ZEST_PARTITION_ID(slot1_partition);
 }
 
 Result<ImageVersion> FirmwareUpdate::version(ImageSlot slot) noexcept
